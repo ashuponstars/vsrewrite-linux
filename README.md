@@ -6,13 +6,17 @@ a linux port of **vs rewrite**: the mod plus the psych engine 0.7.3 fork it runs
 
 the mod isn't mine, it's made by springless, jaspercat, snowthefox, dapootisbird and the voice actors (full list in the mod's credits screen and [NOTICE.md](NOTICE.md)). it's in `mods/Sonic` with the team's permission, plus one tiny crash guard (see NOTICE.md). please support them.
 
-## install
+## download and run
 
-1. get `vsrewrite-linux-*.tar.xz` from [releases](../../releases) and extract it (mod included)
-2. install vlc libs. fedora: `sudo dnf install vlc-libs` (rpmfusion). debian/ubuntu: `sudo apt install libvlc5 vlc-plugin-base`
-3. `./run.sh`
+there's nothing to install, the release is a prebuilt game folder.
 
-a log goes to `vsrewrite-log.txt`, attach it to bug reports. cloning the repo gives you source + mod, not a runnable game: use the release or [build it](BUILDING.md).
+1. download the latest `vsrewrite-linux` archive from [releases](../../releases) and extract it. the mod is already inside
+2. the mod's videos need the vlc libraries. fedora: `sudo dnf install vlc-libs` (rpmfusion). debian/ubuntu: `sudo apt install libvlc5 vlc-plugin-base`
+3. run `./run.sh` in the folder
+
+if something breaks, attach `vsrewrite-log.txt` (it's written next to the game) to your issue.
+
+this repo is the source. cloning it doesn't give you a runnable game, for that use a release or follow [BUILDING.md](BUILDING.md).
 
 ## needs
 
