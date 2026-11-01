@@ -168,11 +168,20 @@ class WindowTransparency
 
 	/** Diagnostic: after the stage has drawn, read back a few pixels of the window so the log shows what is really on screen. */
 	static var watchFrames:Int = 0;
+	static var lastW:Int = 0;
+	static var lastH:Int = 0;
+	static var settle:Int = 0;
 	static function probe(ctx:lime.graphics.RenderContext):Void
 	{
 		// the desktop bar follows the desktop: it is shown while any sampled point of the window is see-through
 		// and hidden while the window is solid (two matching samples in a row, so a single flash can't toggle it).
 		// Only runs while a song has asked for it (Trinity's fullscreen part), a handful of 1-pixel reads per second.
+		// while the window is changing size the corners we read can sit outside the frame that was just drawn and look
+		// see-through, so after any size change the samples are ignored for ~0.75s
+		var ww = lime.app.Application.current.window.width;
+		var wh = lime.app.Application.current.window.height;
+		if (ww != lastW || wh != lastH) { lastW = ww; lastH = wh; settle = 45; }
+		if (settle > 0) { settle--; agree = 0; return; }
 		if (barWatch && !layered) TaskbarHider.hide(); // solid window: the desktop isn't visible
 		else if (barWatch && ++watchFrames % 6 == 0)
 		{
