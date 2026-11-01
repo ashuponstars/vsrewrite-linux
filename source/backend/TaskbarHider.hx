@@ -35,7 +35,11 @@ class TaskbarHider
 	static function runScript(script:String):Void
 	{
 		#if (linux || mac)
-		try { if (sys.FileSystem.exists(script)) new sys.io.Process('/bin/sh', [script]); }
+		try
+		{
+			if (sys.FileSystem.exists(script)) new sys.io.Process('/bin/sh', [script]);
+			else if (sys.FileSystem.exists('bar-auto.sh')) new sys.io.Process('/bin/sh', ['bar-auto.sh', script == 'hide-bar.sh' ? 'hide' : 'restore']);
+		}
 		catch (e:Dynamic) trace('taskbar: ' + e);
 		#end
 	}

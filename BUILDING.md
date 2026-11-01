@@ -1,6 +1,6 @@
 # building from source
 
-only tested on linux (x86_64). the prebuilt binary needs glibc 2.38+, so if your distro is older, building it yourself is the way.
+only tested on linux (x86_64). the prebuilt binary needs glibc 2.34+, so if your distro is older, building it yourself is the way.
 
 ## what you need installed
 

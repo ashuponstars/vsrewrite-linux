@@ -16,7 +16,7 @@ if ! { ldconfig -p 2>/dev/null || /sbin/ldconfig -p 2>/dev/null; } | grep -q 'li
   fi
 fi
 
-# hyprland: keep the game floating + centered, see README.md for the window rule
+# floating: libvsr_argb.so tags the window as a dialog so tiling wms float it with no config (VSR_NO_DIALOG=1 to disable)
 
 # the see-through desktop part needs a 32-bit argb x visual, otherwise the compositor shows black instead of your
 # wallpaper. libvsr_argb.so makes sdl pick that visual. VSR_NO_ARGB=1 runs without it.

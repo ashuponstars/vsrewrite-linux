@@ -1,0 +1,5 @@
+value 1 zoom
+
+value 2 tempo q leva e tempo q fica
+parado no zoom ( 2,5 )
+(dois seguindos até o zoom e 5 segundos parado no zoom)

@@ -1,0 +1,2 @@
+Value 1: Title Name
+Value 2: "reset" to put it back to "VS Sonic"

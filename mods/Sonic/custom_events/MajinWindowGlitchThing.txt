@@ -1,0 +1,1 @@
+had to make it an event cuz curStep wouldn't work well here haha! - snow

@@ -1,0 +1,1 @@
+sets the checkpoint time to the current song position

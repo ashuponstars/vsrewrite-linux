@@ -1,0 +1,2 @@
+value1 video
+value2 hud or game

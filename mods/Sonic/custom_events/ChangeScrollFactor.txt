@@ -1,0 +1,2 @@
+value 1 scrollfactor for both x and y together
+value 2 character 'dad' 'bf' 'gf'

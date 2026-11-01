@@ -8,7 +8,16 @@ import flixel.graphics.tile.FlxDrawBaseItem;
  * FlxGame that survives a broken draw queue: if drawing a frame throws, say which queued item was bad,
  * drop that frame's queue and carry on, instead of closing the game.
  */
-@:cppFileCode('#include <malloc.h>')
+@:cppFileCode('#include <malloc.h>
+#include <stdlib.h>
+#include <math.h>
+// keep the binary loadable on glibc < 2.38 (ubuntu 22.04, debian 12...): bind these two to their old versions
+extern "C" long vsr_old_strtol(const char*, char**, int);
+extern "C" double vsr_old_fmod(double, double);
+__asm__(".symver vsr_old_strtol,strtol@GLIBC_2.2.5");
+__asm__(".symver vsr_old_fmod,fmod@GLIBC_2.2.5");
+extern "C" long __isoc23_strtol(const char* a, char** b, int c) { return vsr_old_strtol(a, b, c); }
+extern "C" double fmod(double a, double b) { return vsr_old_fmod(a, b); }')
 class PsychGame extends FlxGame
 {
 	var drawFailures:Int = 0;

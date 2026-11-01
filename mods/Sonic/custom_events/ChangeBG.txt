@@ -1,0 +1,3 @@
+Value 1 is change
+can be "monitor", "x", "rodentrap",
+"lx", "lx2", or "rewrite"

@@ -10,6 +10,7 @@
 #include <X11/Xutil.h>
 #include <GL/glx.h>
 #include <stdio.h>
+#include <X11/Xatom.h>
 
 typedef void *(*dlsym_fn)(void *, const char *);
 typedef void (*(*gpa_fn)(const GLubyte *))(void);
@@ -74,6 +75,26 @@ static XVisualInfo *my_choosevisual(Display *d, int screen, int *attribs)
 	return v;
 }
 
+
+// Float without wm config: tiling wms (hyprland, sway, i3, bspwm, awesome...) float dialog-type windows on their own, so
+// tag the game window as a dialog right before it is mapped. VSR_NO_DIALOG=1 turns it off.
+static int (*real_map)(Display *, Window);
+static int (*real_raised)(Display *, Window);
+static void tag_dialog(Display *d, Window w)
+{
+	static int done;
+	if (done || getenv("VSR_NO_DIALOG")) return;
+	done = 1;
+	Atom type = XInternAtom(d, "_NET_WM_WINDOW_TYPE", False);
+	Atom dlg = XInternAtom(d, "_NET_WM_WINDOW_TYPE_DIALOG", False);
+	Atom norm = XInternAtom(d, "_NET_WM_WINDOW_TYPE_NORMAL", False);
+	Atom v[2] = { dlg, norm };
+	XChangeProperty(d, w, type, XA_ATOM, 32, PropModeReplace, (unsigned char *)v, 2);
+	if (getenv("VSR_ARGB_DEBUG")) fprintf(stderr, "[argb] tagged window 0x%lx as dialog\n", w);
+}
+static int my_map(Display *d, Window w) { tag_dialog(d, w); return real_map(d, w); }
+static int my_raised(Display *d, Window w) { tag_dialog(d, w); return real_raised(d, w); }
+
 static void (*my_gpa(const GLubyte *name))(void)
 {
 	if (getenv("VSR_ARGB_DEBUG")) fprintf(stderr, "[argb] gpa %s\n", name ? (const char *)name : "(null)");
@@ -87,6 +108,8 @@ void *dlsym(void *handle, const char *name)
 	init_real();
 	void *r = real_dlsym(handle, name);
 	if (getenv("VSR_ARGB_DEBUG") && name && !strncmp(name, "glX", 3)) fprintf(stderr, "[argb] dlsym %s -> %p\n", name, r);
+	if (r && name && !strcmp(name, "XMapWindow")) { real_map = (int (*)(Display *, Window))r; return (void *)my_map; }
+	if (r && name && !strcmp(name, "XMapRaised")) { real_raised = (int (*)(Display *, Window))r; return (void *)my_raised; }
 	if (r && name && (!strcmp(name, "glXGetProcAddressARB") || !strcmp(name, "glXGetProcAddress")))
 	{
 		real_gpa = (gpa_fn)r;

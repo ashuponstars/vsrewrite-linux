@@ -1,0 +1,8 @@
+Allows for colored words
+A $ symbol must wrap the words you want to color.
+Examples:
+I AM $GOD.$
+SONIC $LOVES$ TO SEE YOU RUN.
+
+Otherwise, this event is the exact same as the other lyrics event.
+Do not worry about the lyrics shadow text, that is handled automatically :)

@@ -1,6 +1,6 @@
 diff -ruN a/source/Main.hx b/source/Main.hx
---- a/source/Main.hx	2026-11-01 00:45:22.504190709 +0000
-+++ b/source/Main.hx	2026-10-30 00:44:48.000000000 +0000
+--- a/source/Main.hx
++++ b/source/Main.hx
 @@ -39,9 +39,9 @@
  class Main extends Sprite
  {
@@ -33,8 +33,8 @@ diff -ruN a/source/Main.hx b/source/Main.hx
  		Lib.current.stage.align = "tl";
  		Lib.current.stage.scaleMode = StageScaleMode.NO_SCALE;
 diff -ruN a/source/backend/ClientPrefs.hx b/source/backend/ClientPrefs.hx
---- a/source/backend/ClientPrefs.hx	2026-11-01 00:45:22.504751100 +0000
-+++ b/source/backend/ClientPrefs.hx	2026-10-30 01:28:46.000000000 +0000
+--- a/source/backend/ClientPrefs.hx
++++ b/source/backend/ClientPrefs.hx
 @@ -13,6 +13,10 @@
  	public var opponentStrums:Bool = true;
  	public var showFPS:Bool = true;
@@ -47,8 +47,8 @@ diff -ruN a/source/backend/ClientPrefs.hx b/source/backend/ClientPrefs.hx
  	public var antialiasing:Bool = true;
  	public var noteSkin:String = 'Default';
 diff -ruN a/source/backend/Discord.hx b/source/backend/Discord.hx
---- a/source/backend/Discord.hx	2026-11-01 00:45:22.504751100 +0000
-+++ b/source/backend/Discord.hx	2026-10-31 04:36:39.973976679 +0000
+--- a/source/backend/Discord.hx
++++ b/source/backend/Discord.hx
 @@ -79,6 +79,11 @@
  		isInitialized = true;
  	}
@@ -62,8 +62,8 @@ diff -ruN a/source/backend/Discord.hx b/source/backend/Discord.hx
  	{
  		var startTimestamp:Float = 0;
 diff -ruN a/source/backend/MusicBeatState.hx b/source/backend/MusicBeatState.hx
---- a/source/backend/MusicBeatState.hx	2026-11-01 00:45:22.504751100 +0000
-+++ b/source/backend/MusicBeatState.hx	2026-10-30 01:15:13.000000000 +0000
+--- a/source/backend/MusicBeatState.hx
++++ b/source/backend/MusicBeatState.hx
 @@ -129,7 +129,8 @@
  		curStep = lastChange.stepTime + Math.floor(shit);
  	}
@@ -75,8 +75,8 @@ diff -ruN a/source/backend/MusicBeatState.hx b/source/backend/MusicBeatState.hx
  		if(nextState == FlxG.state)
  		{
 diff -ruN a/source/backend/Paths.hx b/source/backend/Paths.hx
---- a/source/backend/Paths.hx	2026-11-01 00:45:22.504751100 +0000
-+++ b/source/backend/Paths.hx	2026-10-29 15:27:42.000000000 +0000
+--- a/source/backend/Paths.hx
++++ b/source/backend/Paths.hx
 @@ -33,6 +33,23 @@
  	}
  
@@ -167,9 +167,9 @@ diff -ruN a/source/backend/Paths.hx b/source/backend/Paths.hx
  
  	inline static public function modsFont(key:String) {
 diff -ruN a/source/backend/PsychGame.hx b/source/backend/PsychGame.hx
---- a/source/backend/PsychGame.hx	1970-01-01 01:00:00.000000000 +0100
-+++ b/source/backend/PsychGame.hx	2026-11-01 00:41:42.477078609 +0000
-@@ -0,0 +1,248 @@
+--- a/source/backend/PsychGame.hx
++++ b/source/backend/PsychGame.hx
+@@ -0,0 +1,257 @@
 +package backend;
 +
 +import flixel.FlxG;
@@ -180,7 +180,16 @@ diff -ruN a/source/backend/PsychGame.hx b/source/backend/PsychGame.hx
 + * FlxGame that survives a broken draw queue: if drawing a frame throws, say which queued item was bad,
 + * drop that frame's queue and carry on, instead of closing the game.
 + */
-+@:cppFileCode('#include <malloc.h>')
++@:cppFileCode('#include <malloc.h>
++#include <stdlib.h>
++#include <math.h>
++// keep the binary loadable on glibc < 2.38 (ubuntu 22.04, debian 12...): bind these two to their old versions
++extern "C" long vsr_old_strtol(const char*, char**, int);
++extern "C" double vsr_old_fmod(double, double);
++__asm__(".symver vsr_old_strtol,strtol@GLIBC_2.2.5");
++__asm__(".symver vsr_old_fmod,fmod@GLIBC_2.2.5");
++extern "C" long __isoc23_strtol(const char* a, char** b, int c) { return vsr_old_strtol(a, b, c); }
++extern "C" double fmod(double a, double b) { return vsr_old_fmod(a, b); }')
 +class PsychGame extends FlxGame
 +{
 +	var drawFailures:Int = 0;
@@ -419,9 +428,9 @@ diff -ruN a/source/backend/PsychGame.hx b/source/backend/PsychGame.hx
 +	}
 +}
 diff -ruN a/source/backend/TaskbarHider.hx b/source/backend/TaskbarHider.hx
---- a/source/backend/TaskbarHider.hx	1970-01-01 01:00:00.000000000 +0100
-+++ b/source/backend/TaskbarHider.hx	2026-10-30 01:37:59.000000000 +0000
-@@ -0,0 +1,50 @@
+--- a/source/backend/TaskbarHider.hx
++++ b/source/backend/TaskbarHider.hx
+@@ -0,0 +1,54 @@
 +package backend;
 +
 +/**
@@ -459,7 +468,11 @@ diff -ruN a/source/backend/TaskbarHider.hx b/source/backend/TaskbarHider.hx
 +	static function runScript(script:String):Void
 +	{
 +		#if (linux || mac)
-+		try { if (sys.FileSystem.exists(script)) new sys.io.Process('/bin/sh', [script]); }
++		try
++		{
++			if (sys.FileSystem.exists(script)) new sys.io.Process('/bin/sh', [script]);
++			else if (sys.FileSystem.exists('bar-auto.sh')) new sys.io.Process('/bin/sh', ['bar-auto.sh', script == 'hide-bar.sh' ? 'hide' : 'restore']);
++		}
 +		catch (e:Dynamic) trace('taskbar: ' + e);
 +		#end
 +	}
@@ -473,8 +486,8 @@ diff -ruN a/source/backend/TaskbarHider.hx b/source/backend/TaskbarHider.hx
 +	}
 +}
 diff -ruN a/source/backend/VsrDebug.hx b/source/backend/VsrDebug.hx
---- a/source/backend/VsrDebug.hx	1970-01-01 01:00:00.000000000 +0100
-+++ b/source/backend/VsrDebug.hx	2026-11-01 00:41:42.360111736 +0000
+--- a/source/backend/VsrDebug.hx
++++ b/source/backend/VsrDebug.hx
 @@ -0,0 +1,19 @@
 +package backend;
 +
@@ -496,8 +509,8 @@ diff -ruN a/source/backend/VsrDebug.hx b/source/backend/VsrDebug.hx
 +	}
 +}
 diff -ruN a/source/backend/WindowTransparency.hx b/source/backend/WindowTransparency.hx
---- a/source/backend/WindowTransparency.hx	1970-01-01 01:00:00.000000000 +0100
-+++ b/source/backend/WindowTransparency.hx	2026-11-01 00:41:42.477320560 +0000
+--- a/source/backend/WindowTransparency.hx
++++ b/source/backend/WindowTransparency.hx
 @@ -0,0 +1,244 @@
 +package backend;
 +
@@ -744,8 +757,8 @@ diff -ruN a/source/backend/WindowTransparency.hx b/source/backend/WindowTranspar
 +	}
 +}
 diff -ruN a/source/debug/FPSCounter.hx b/source/debug/FPSCounter.hx
---- a/source/debug/FPSCounter.hx	2026-11-01 00:45:22.506481563 +0000
-+++ b/source/debug/FPSCounter.hx	2026-10-29 13:46:18.000000000 +0000
+--- a/source/debug/FPSCounter.hx
++++ b/source/debug/FPSCounter.hx
 @@ -16,6 +16,9 @@
  	**/
  	public var currentFPS(default, null):Int;
@@ -766,8 +779,8 @@ diff -ruN a/source/debug/FPSCounter.hx b/source/debug/FPSCounter.hx
  			textColor = 0xFFFF0000;
  	}
 diff -ruN a/source/objects/MaigoSpeaker.hx b/source/objects/MaigoSpeaker.hx
---- a/source/objects/MaigoSpeaker.hx	1970-01-01 01:00:00.000000000 +0100
-+++ b/source/objects/MaigoSpeaker.hx	2026-10-29 13:45:12.000000000 +0000
+--- a/source/objects/MaigoSpeaker.hx
++++ b/source/objects/MaigoSpeaker.hx
 @@ -0,0 +1,140 @@
 +package objects;
 +
@@ -910,8 +923,8 @@ diff -ruN a/source/objects/MaigoSpeaker.hx b/source/objects/MaigoSpeaker.hx
 +	}
 +}
 diff -ruN a/source/options/ControlsSubState.hx b/source/options/ControlsSubState.hx
---- a/source/options/ControlsSubState.hx	2026-11-01 00:45:22.509308832 +0000
-+++ b/source/options/ControlsSubState.hx	2026-10-29 14:42:21.000000000 +0000
+--- a/source/options/ControlsSubState.hx
++++ b/source/options/ControlsSubState.hx
 @@ -10,7 +10,7 @@
  import flixel.input.gamepad.FlxGamepadInputID;
  import flixel.input.gamepad.FlxGamepadManager;
@@ -932,8 +945,8 @@ diff -ruN a/source/options/ControlsSubState.hx b/source/options/ControlsSubState
  			}
  			if(FlxG.keys.justPressed.CONTROL || FlxG.gamepads.anyJustPressed(LEFT_SHOULDER) || FlxG.gamepads.anyJustPressed(RIGHT_SHOULDER)) swapMode();
 diff -ruN a/source/options/OptionsState.hx b/source/options/OptionsState.hx
---- a/source/options/OptionsState.hx	2026-11-01 00:45:22.509308832 +0000
-+++ b/source/options/OptionsState.hx	2026-10-29 14:42:21.000000000 +0000
+--- a/source/options/OptionsState.hx
++++ b/source/options/OptionsState.hx
 @@ -16,7 +16,7 @@
  			case 'Note Colors':
  				openSubState(new options.NotesSubState());
@@ -944,8 +957,8 @@ diff -ruN a/source/options/OptionsState.hx b/source/options/OptionsState.hx
  				openSubState(new options.GraphicsSettingsSubState());
  			case 'Visuals and UI':
 diff -ruN a/source/psychlua/FunkinLua.hx b/source/psychlua/FunkinLua.hx
---- a/source/psychlua/FunkinLua.hx	2026-11-01 00:45:22.510306707 +0000
-+++ b/source/psychlua/FunkinLua.hx	2026-10-30 00:31:03.000000000 +0000
+--- a/source/psychlua/FunkinLua.hx
++++ b/source/psychlua/FunkinLua.hx
 @@ -99,6 +99,10 @@
  		set('curStage', PlayState.SONG.stage);
  
@@ -1048,8 +1061,8 @@ diff -ruN a/source/psychlua/FunkinLua.hx b/source/psychlua/FunkinLua.hx
  			if(game.getLuaObject(obj)!=null) {
  				var shit:FlxSprite = game.getLuaObject(obj);
 diff -ruN a/source/psychlua/LuaUtils.hx b/source/psychlua/LuaUtils.hx
---- a/source/psychlua/LuaUtils.hx	2026-11-01 00:45:22.510306707 +0000
-+++ b/source/psychlua/LuaUtils.hx	2026-10-31 00:33:59.000000000 +0000
+--- a/source/psychlua/LuaUtils.hx
++++ b/source/psychlua/LuaUtils.hx
 @@ -509,6 +509,8 @@
  		switch(cam.toLowerCase()) {
  			case 'camhud' | 'hud': return PlayState.instance.camHUD;
@@ -1060,8 +1073,8 @@ diff -ruN a/source/psychlua/LuaUtils.hx b/source/psychlua/LuaUtils.hx
  		return PlayState.instance.camGame;
  	}
 diff -ruN a/source/psychlua/TextFunctions.hx b/source/psychlua/TextFunctions.hx
---- a/source/psychlua/TextFunctions.hx	2026-11-01 00:45:22.510802356 +0000
-+++ b/source/psychlua/TextFunctions.hx	2026-10-29 13:54:01.000000000 +0000
+--- a/source/psychlua/TextFunctions.hx
++++ b/source/psychlua/TextFunctions.hx
 @@ -156,6 +156,15 @@
  			FunkinLua.luaTrace("getTextFont: Object " + tag + " doesn't exist!", false, false, FlxColor.RED);
  			return null;
@@ -1079,8 +1092,8 @@ diff -ruN a/source/psychlua/TextFunctions.hx b/source/psychlua/TextFunctions.hx
  			var obj:FlxText = LuaUtils.getTextObject(tag);
  			if(obj != null)
 diff -ruN a/source/states/CustomState.hx b/source/states/CustomState.hx
---- a/source/states/CustomState.hx	1970-01-01 01:00:00.000000000 +0100
-+++ b/source/states/CustomState.hx	2026-11-01 00:41:42.471182835 +0000
+--- a/source/states/CustomState.hx
++++ b/source/states/CustomState.hx
 @@ -0,0 +1,193 @@
 +package states;
 +
@@ -1276,8 +1289,8 @@ diff -ruN a/source/states/CustomState.hx b/source/states/CustomState.hx
 +	}
 +}
 diff -ruN a/source/states/PlayState.hx b/source/states/PlayState.hx
---- a/source/states/PlayState.hx	2026-11-01 00:45:22.515187975 +0000
-+++ b/source/states/PlayState.hx	2026-11-01 00:41:42.476210801 +0000
+--- a/source/states/PlayState.hx
++++ b/source/states/PlayState.hx
 @@ -38,10 +38,7 @@
  #end
  
@@ -1595,8 +1608,8 @@ diff -ruN a/source/states/PlayState.hx b/source/states/PlayState.hx
  		{
  			var timeSub:Float = Conductor.songPosition - Conductor.offset;
 diff -ruN a/source/substates/GameOverSubstate.hx b/source/substates/GameOverSubstate.hx
---- a/source/substates/GameOverSubstate.hx	2026-11-01 00:45:22.521265992 +0000
-+++ b/source/substates/GameOverSubstate.hx	2026-10-30 00:31:03.000000000 +0000
+--- a/source/substates/GameOverSubstate.hx
++++ b/source/substates/GameOverSubstate.hx
 @@ -92,10 +92,7 @@
  			PlayState.chartingMode = false;
  
@@ -1610,8 +1623,8 @@ diff -ruN a/source/substates/GameOverSubstate.hx b/source/substates/GameOverSubs
  			FlxG.sound.playMusic(Paths.music('freakyMenu'));
  			PlayState.instance.callOnScripts('onGameOverConfirm', [false]);
 diff -ruN a/source/substates/PauseSubState.hx b/source/substates/PauseSubState.hx
---- a/source/substates/PauseSubState.hx	2026-11-01 00:45:22.521789462 +0000
-+++ b/source/substates/PauseSubState.hx	2026-10-30 00:31:03.000000000 +0000
+--- a/source/substates/PauseSubState.hx
++++ b/source/substates/PauseSubState.hx
 @@ -311,10 +311,7 @@
  					PlayState.seenCutscene = false;
  

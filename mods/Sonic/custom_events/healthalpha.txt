@@ -1,0 +1,2 @@
+value1 fade time
+value2 alphavalue

@@ -1,0 +1,3 @@
+sets noteskin (obviously)
+value 1 is texture
+texture must be in noteSkins folder in images

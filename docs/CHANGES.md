@@ -8,7 +8,7 @@ short version: 17 upstream files changed, 6 files added, assets and art untouche
 |---|---|
 | `source/backend/PsychGame.hx` | our `FlxGame`. a frame that fails to draw is dropped and logged instead of crashing the game. each frame it also runs the see-through window pass, fixes the window size if the compositor handed back the wrong one, hides the desktop bar while the window is borderless (end credits), and frees the extra ram copy of images once they're on the gpu |
 | `source/backend/WindowTransparency.hx` | the see-through window. windows does this with a colour key on a layered window, here the window has real alpha and a shader turns the key colour (`0x131313`) transparent once, over all cameras together. also stores `window.opacity` and fades the picture with it, and watches the window so the desktop bar follows the desktop |
-| `source/backend/TaskbarHider.hx` | runs `hide-bar.sh` / `restore-bar.sh` when the bar should hide or come back, plus the optional `coverBar` hyprland fullscreen trick |
+| `source/backend/TaskbarHider.hx` | runs `hide-bar.sh` / `restore-bar.sh` (or the built-in `bar-auto.sh` for waybar/polybar) when the bar should hide or come back, plus the optional `coverBar` hyprland fullscreen trick |
 | `source/backend/VsrDebug.hx` | the switch between debug and release (`-Dvsr_debug`) |
 | `source/states/CustomState.hx` | an engine state that runs the mod's hscript menus (`mods/Sonic/states/*.hx`). in debug builds it also reads the `VSR_*` test variables |
 | `source/objects/MaigoSpeaker.hx` | an object the mod's scripts use |
@@ -34,8 +34,10 @@ short version: 17 upstream files changed, 6 files added, assets and art untouche
 
 ## the ARGB shim
 
-`argb/vsr_argb.c`, see [BUILDING.md](../BUILDING.md). sdl's default x visual is 24-bit with no alpha, so the compositor can't see through the window. this makes sdl choose a 32-bit visual.
+`argb/vsr_argb.c`, see [BUILDING.md](../BUILDING.md). sdl's default x visual is 24-bit with no alpha, so the compositor can't see through the window. this makes sdl choose a 32-bit visual. it also tags the window as a dialog so tiling wms float it without any rules.
 
 ## things the engine does that are specific to the mod's trinity chart
 
 the step numbers for hiding the bar (3596) come from the mod's chart. other songs are not affected.
+
+`PsychGame.hx` also pins two libc calls (`strtol`, `fmod`) to their old glibc versions so the binary runs on glibc 2.34+ instead of needing 2.38.
