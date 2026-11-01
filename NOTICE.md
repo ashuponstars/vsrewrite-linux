@@ -10,4 +10,4 @@ engine assets (`assets/`, `art/`) aren't in the source repo either, `scripts/set
 
 ## libraries
 
-haxe, lime, openfl, flixel, flixel-addons, flixel-ui, hxcpp, SScript, hxvlc, linc_luajit, hxdiscord_rpc, flxanimate and tjson each keep their own licenses. `libvlc` is used at runtime and is not bundled.
+haxe, lime, openfl, flixel, flixel-addons, flixel-ui, hxcpp, SScript, hxvlc, linc_luajit, hxdiscord_rpc, flxanimate and tjson each keep their own licenses. `libvlc` (LGPL 2.1+) and its plugins ship in the release's `vlc/` folder, unmodified, from videolan (https://www.videolan.org).

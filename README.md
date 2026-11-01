@@ -1,40 +1,42 @@
 # vsrewrite-linux
 
-linux port of vs rewrite. it's the mod plus the engine it runs on, reworked so the window stuff (resizing, moving the window, seeing your desktop through it) works on linux.
+linux port of vs rewrite: the mod plus the engine it runs on, with the window stuff (resizing, moving, seeing your desktop through it) working on linux.
 
-v1 experimental. runs well on my pc, if it breaks on yours open an issue and attach `vsrewrite-log.txt` (it's next to the game).
+v1 experimental. if it breaks, open an issue with `vsrewrite-log.txt` (next to the game).
 
 ## run it
 
-1. download the archive from [releases](../../releases) and extract it
-2. run `./run.sh`
+1. download from [releases](../../releases) and extract
+2. `./run.sh`
 
-that's it, the mod and everything it needs (vlc included) is in the folder.
+mod and vlc are in the folder, nothing else to install.
 
 ## needs
 
 - glibc 2.34+ (ubuntu 22.04+, debian 12+, fedora 35+, rhel 9, arch)
-- x11 or wayland, kde / gnome / hyprland / sway / i3 all fine, no config needed. it runs through xwayland
-- a compositor for the see-through desktop part (every wayland session has one, on x11 use kwin/picom/mutter), otherwise that part is black
+- x11 or wayland, any desktop, no config (runs through xwayland)
+- a compositor for the see-through desktop part, else it's black. every wayland session has one, on x11 use kwin/picom/mutter
 
-tested on fedora + hyprland so far. everything else should work but i haven't run it yet.
+tested on fedora + hyprland only so far.
 
 ## good to know
 
-- **floating:** no window rules needed, the window tags itself so tiling wms float it. `VSR_NO_DIALOG=1 ./run.sh` turns that off
-- **bar:** the game hides your desktop bar while the desktop is covered and brings it back after. put your own `hide-bar.sh` and `restore-bar.sh` next to `run.sh` (examples in `examples/`), or `bar-auto.sh` guesses: quickshell, waybar, polybar, plasma panels, or it closes and relaunches any other bar. i've only tested my own quickshell
-- trinity uses about 1.5 gb ram on integrated graphics, the sheets are huge
+- no window rules needed, the window tags itself so tiling wms float it. `VSR_NO_DIALOG=1 ./run.sh` turns that off
+- the game hides your bar while the desktop is covered. use your own `hide-bar.sh` / `restore-bar.sh` next to `run.sh` (examples in `examples/`), or `bar-auto.sh` tries quickshell, waybar, polybar, plasma panels, or closes and relaunches any other bar. only my quickshell is tested
+- trinity uses ~1.5 gb ram on integrated graphics
 - `oh no its returning null` in the log is harmless
-- native wayland isn't supported, windows can't position themselves there
+- native wayland isn't supported, windows can't position themselves
 
 ## debug build
 
-separate small download, drop it over the game folder. adds test hooks and a memory/fps logger ([docs/DEBUG.md](docs/DEBUG.md)). `./test-trinity.sh` jumps to just before trinity's widescreen part.
+small separate download, drop it over the game folder. test hooks and a memory/fps logger ([docs/DEBUG.md](docs/DEBUG.md)). `./test-trinity.sh` jumps to just before trinity's widescreen part.
 
 ## source
 
-this repo is the source (nothing runnable in it). [BUILDING.md](BUILDING.md) to build it, [docs/CHANGES.md](docs/CHANGES.md) for what changed vs upstream psych.
+[BUILDING.md](BUILDING.md) to build, [docs/CHANGES.md](docs/CHANGES.md) for changes vs upstream psych. the repo alone isn't runnable.
 
 ## credits
 
-the mod is by springless, jaspercat, snowthefox, dapootisbird and the voice actors (full list in the mod's credits screen), included here with their permission plus one small crash guard (see [NOTICE.md](NOTICE.md)). please support them. engine is [psych engine](https://github.com/ShadowMario/FNF-PsychEngine) 0.7.3 by shadowmario and team. license: apache 2.0 for the engine, see `LICENSE`.
+the mod is by springless, jaspercat, snowthefox, dapootisbird and the voice actors (see the mod's credits screen). included with their permission plus one small crash guard ([NOTICE.md](NOTICE.md)). please support them.
+
+engine: [psych engine](https://github.com/ShadowMario/FNF-PsychEngine) 0.7.3 by shadowmario and team. apache 2.0, see `LICENSE`.
