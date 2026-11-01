@@ -17,7 +17,7 @@ cd vsrewrite-linux
 scripts/setup.sh            # clones upstream psych 0.7.3, puts our source on top, installs the pinned libs, applies the 2 patches
 scripts/build.sh release    # -> out/release/
 scripts/build.sh debug      # -> out/debug/   (same thing + test hooks and the mem/fps logger)
-scripts/package.sh 0.1.0    # -> dist-out/*.tar.xz
+scripts/package.sh 1.0.0-experimental.1    # -> dist-out/*.tar.xz (game with the mod, plus the debug overlay)
 ```
 
 a full build is slow the first time (the c++ compile, 10+ minutes), after that it only rebuilds what changed.

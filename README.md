@@ -1,12 +1,14 @@
 # vsrewrite-linux
 
-linux build of the engine vs rewrite runs on. it's a psych engine 0.7.3 fork, reworked so the mod's window stuff (resizing, moving the window around, the see-through desktop part) actually works on linux instead of just windows.
+a linux port of **vs rewrite**. it's the mod plus the engine it runs on (a psych engine 0.7.3 fork), reworked so the mod's window tricks (resizing, moving the window around, the see-through desktop part) actually work on linux instead of just windows.
+
+**status: v1 experimental.** it works great on my setup but it's new, so expect rough edges on other desktops and please report them.
 
 **the vs rewrite mod isn't mine.** it's made by springless, jaspercat, snowthefox, dapootisbird and the voice actors (full list in the mod's own credits screen and [NOTICE.md](NOTICE.md)). it's in `mods/Sonic` (one tiny crash guard added, see NOTICE.md), put here with the team's permission so the port has everything it needs in one place. if you like it, go support them.
 
 ## what works
 
-tested on **fedora + hyprland** (through xwayland). kde, gnome, sway, i3 and other distros are set up to work but i haven't run them myself yet, so say if something's off.
+tested on **fedora + hyprland** (through xwayland). kde (wayland + x11), gnome, sway, i3 and other distros are built to work with no extra config, but i haven't run them myself yet, so say if something's off.
 
 - window sizes and the menu / song / game over resizing
 - songs that move and shake the window
@@ -25,11 +27,13 @@ tested on **fedora + hyprland** (through xwayland). kde, gnome, sway, i3 and oth
 
 ## install
 
-1. grab `vsrewrite-linux-release-*.tar.xz` from the releases page and extract it
-2. make sure the mod is in `mods/` (so you end up with `mods/Sonic/`). it's already there if you cloned the repo
+1. grab `vsrewrite-linux-*.tar.xz` from the [releases page](../../releases) and extract it. the mod is already inside (`mods/Sonic/`)
+2. install the vlc libs (see above)
 3. `./run.sh`
 
 it also writes a log to `vsrewrite-log.txt` next to the game, attach that if you report a bug.
+
+cloning the repo gets you the source and the mod but not a runnable game, for that either use the release or [build it](BUILDING.md).
 
 ### window rules
 
@@ -54,7 +58,7 @@ if you don't make those scripts the game tries `bar-auto.sh`, which detects what
 ## debug vs release
 
 - **release**: the normal one. no test hooks, no extra logging.
-- **debug**: same game plus test hooks and a memory + fps logger. it's an overlay for the release folder, drop its files over a release install. see [docs/DEBUG.md](docs/DEBUG.md). `./test-trinity.sh` jumps straight to ~10 seconds before trinity goes widescreen so you don't have to play the whole song every time you test.
+- **debug**: same game plus test hooks and a memory + fps logger. it's a small separate download (`vsrewrite-linux-debug-*.tar.xz`), drop its files over a release install. see [docs/DEBUG.md](docs/DEBUG.md). `./test-trinity.sh` jumps straight to ~10 seconds before trinity goes widescreen so you don't have to play the whole song every time you test.
 
 both are optimised builds. "debug" here means the test hooks, not a slow `-debug` compile.
 
