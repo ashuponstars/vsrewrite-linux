@@ -18,6 +18,9 @@ class TaskbarHider
 	{
 		if (hidden) return;
 		hidden = true;
+		#if vsr_debug
+		Sys.println('[bar] HIDE');
+		#end
 		// "Taskbar Hiding": the player's own script knows how to hide their bar
 		if (ClientPrefs.data.windowClosing) runScript('hide-bar.sh');
 		// "Cover Bar": Hyprland shows the game window above layer-shell bars while it is in compositor fullscreen
@@ -28,6 +31,9 @@ class TaskbarHider
 	{
 		if (!hidden) return;
 		hidden = false;
+		#if vsr_debug
+		Sys.println('[bar] RESTORE');
+		#end
 		if (ClientPrefs.data.windowClosing) runScript('restore-bar.sh');
 		if (covered) { covered = false; hypr(['dispatch', 'fullscreenstate', '0', '0']); }
 	}

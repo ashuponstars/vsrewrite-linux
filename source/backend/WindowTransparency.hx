@@ -171,6 +171,9 @@ class WindowTransparency
 	static var lastW:Int = 0;
 	static var lastH:Int = 0;
 	static var settle:Int = 0;
+	#if vsr_debug
+	static var lastSig:String = '';
+	#end
 	static function probe(ctx:lime.graphics.RenderContext):Void
 	{
 		// the desktop bar follows the desktop: it is shown while any sampled point of the window is see-through
@@ -181,6 +184,9 @@ class WindowTransparency
 		var ww = lime.app.Application.current.window.width;
 		var wh = lime.app.Application.current.window.height;
 		if (ww != lastW || wh != lastH) { lastW = ww; lastH = wh; settle = 45; }
+		#if vsr_debug
+		if (settle == 45) Sys.println('[bar] size change -> ' + ww + 'x' + wh + ' (ignoring samples ~0.75s)');
+		#end
 		if (settle > 0) { settle--; agree = 0; return; }
 		if (barWatch && !layered) TaskbarHider.hide(); // solid window: the desktop isn't visible
 		else if (barWatch && ++watchFrames % 6 == 0)
@@ -192,11 +198,17 @@ class WindowTransparency
 				var h = lime.app.Application.current.window.height;
 				var b = new lime.utils.UInt8Array(4);
 				var see = false;
+				var dbg = '';
 				for (pt in [[4, 4], [w - 4, 4], [4, h - 4], [w - 4, h - 4], [Std.int(w / 2), Std.int(h / 2)]])
 				{
 					gl.readPixels(pt[0], pt[1], 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b);
-					if (b[3] == 0) { see = true; break; }
+					if (VsrDebug.ON) dbg += b[3] + ' ';
+					if (b[3] == 0) { see = true; if (!VsrDebug.ON) break; }
 				}
+				#if vsr_debug
+				var sig = w + 'x' + h + ' a=' + dbg + 'see=' + see;
+				if (sig != lastSig) { lastSig = sig; Sys.println('[bar] ' + sig + ' agree=' + agree + ' lastSee=' + lastSee + ' t=' + Std.int(haxe.Timer.stamp() * 10) / 10); }
+				#end
 				if (see == lastSee) { if (agree < 2) agree++; } else { lastSee = see; agree = 1; }
 				if (agree == 2)
 				{
