@@ -1,0 +1,11 @@
+--- a/flixel/graphics/tile/FlxDrawQuadsItem.hx
++++ b/flixel/graphics/tile/FlxDrawQuadsItem.hx
+@@ -112,7 +112,7 @@
+ 	#if !flash
+ 	override public function render(camera:FlxCamera):Void
+ 	{
+-		if (rects.length == 0)
++		if (rects.length == 0 || graphics == null) // VSR: a sprite with a destroyed graphic must skip, not blank the whole frame
+ 			return;
+ 
+ 		var shader = shader != null ? shader : graphics.shader;

@@ -1,0 +1,23 @@
+--- a/lime/_internal/backend/native/NativeWindow.hx
++++ b/lime/_internal/backend/native/NativeWindow.hx
+@@ -301,6 +301,9 @@
+ 
+ 	public function getOpacity():Float
+ 	{
++		#if (linux && !macro)
++		return backend.WindowTransparency.opacity; // VSR: the compositor may ignore window opacity, so the game applies it itself
++		#end
+ 		if (handle != null)
+ 		{
+ 			#if (!macro && lime_cffi)
+@@ -662,6 +665,10 @@
+ 
+ 	public function setOpacity(value:Float):Void
+ 	{
++		#if (linux && !macro)
++		backend.WindowTransparency.opacity = value;
++		return;
++		#end
+ 		if (handle != null)
+ 		{
+ 			#if (!macro && lime_cffi)

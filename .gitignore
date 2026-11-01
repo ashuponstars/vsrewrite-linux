@@ -1,0 +1,8 @@
+build/
+out/
+dist-out/
+export/
+*.so
+*.xz
+*.orig
+*.bak

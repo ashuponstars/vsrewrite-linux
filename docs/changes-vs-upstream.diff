@@ -1,0 +1,1626 @@
+diff -ruN a/source/Main.hx b/source/Main.hx
+--- a/source/Main.hx	2026-11-01 00:45:22.504190709 +0000
++++ b/source/Main.hx	2026-10-30 00:44:48.000000000 +0000
+@@ -39,9 +39,9 @@
+ class Main extends Sprite
+ {
+ 	var game = {
+-		width: 1280, // WINDOW width
++		width: 820, // WINDOW width
+ 		height: 720, // WINDOW height
+-		initialState: TitleState, // initial game state
++		initialState: states.CustomState, // initial game state
+ 		zoom: -1.0, // game state bounds
+ 		framerate: 60, // default framerate
+ 		skipSplash: true, // if the default flixel splash screen should be skipped
+@@ -102,14 +102,16 @@
+ 			game.height = Math.ceil(stageHeight / game.zoom);
+ 		}
+ 	
++		// created before the game so the menu scripts (which run during FlxGame start-up) can use it
++		#if !mobile fpsVar = new FPSCounter(10, 3, 0xFFFFFF); #end
++
+ 		#if LUA_ALLOWED Lua.set_callbacks_function(cpp.Callable.fromStaticFunction(psychlua.CallbackHandler.call)); #end
+ 		Controls.instance = new Controls();
+ 		ClientPrefs.loadDefaultKeys();
+ 		#if ACHIEVEMENTS_ALLOWED Achievements.load(); #end
+-		addChild(new FlxGame(game.width, game.height, game.initialState, #if (flixel < "5.0.0") game.zoom, #end game.framerate, game.framerate, game.skipSplash, game.startFullscreen));
++		addChild(new backend.PsychGame(game.width, game.height, game.initialState, #if (flixel < "5.0.0") game.zoom, #end game.framerate, game.framerate, game.skipSplash, game.startFullscreen));
+ 
+ 		#if !mobile
+-		fpsVar = new FPSCounter(10, 3, 0xFFFFFF);
+ 		addChild(fpsVar);
+ 		Lib.current.stage.align = "tl";
+ 		Lib.current.stage.scaleMode = StageScaleMode.NO_SCALE;
+diff -ruN a/source/backend/ClientPrefs.hx b/source/backend/ClientPrefs.hx
+--- a/source/backend/ClientPrefs.hx	2026-11-01 00:45:22.504751100 +0000
++++ b/source/backend/ClientPrefs.hx	2026-10-30 01:28:46.000000000 +0000
+@@ -13,6 +13,10 @@
+ 	public var opponentStrums:Bool = true;
+ 	public var showFPS:Bool = true;
+ 	public var flashing:Bool = true;
++	public var windowFuckery:Bool = true; // mod option: songs may move the window
++	public var windowClosing:Bool = true; // mod option: songs may hide the taskbar (inferred default)
++	public var coverBar:Bool = false; // Linux option: cover desktop bars (Hyprland fullscreen) while the taskbar is hidden
++	public var remixedLegacySongs:Bool = false; // mod option: use the remixed versions of the legacy songs
+ 	public var autoPause:Bool = true;
+ 	public var antialiasing:Bool = true;
+ 	public var noteSkin:String = 'Default';
+diff -ruN a/source/backend/Discord.hx b/source/backend/Discord.hx
+--- a/source/backend/Discord.hx	2026-11-01 00:45:22.504751100 +0000
++++ b/source/backend/Discord.hx	2026-10-31 04:36:39.973976679 +0000
+@@ -79,6 +79,11 @@
+ 		isInitialized = true;
+ 	}
+ 
++	public static function getPresence():String
++	{
++		return presence.details;
++	}
++
+ 	public static function changePresence(?details:String = 'In the Menus', ?state:Null<String>, ?smallImageKey : String, ?hasStartTimestamp : Bool, ?endTimestamp: Float)
+ 	{
+ 		var startTimestamp:Float = 0;
+diff -ruN a/source/backend/MusicBeatState.hx b/source/backend/MusicBeatState.hx
+--- a/source/backend/MusicBeatState.hx	2026-11-01 00:45:22.504751100 +0000
++++ b/source/backend/MusicBeatState.hx	2026-10-30 01:15:13.000000000 +0000
+@@ -129,7 +129,8 @@
+ 		curStep = lastChange.stepTime + Math.floor(shit);
+ 	}
+ 
+-	public static function switchState(nextState:FlxState = null) {
++	public static function switchState(nextState:FlxState = null, ?scriptPath:String = null) {
++		if(scriptPath != null && Std.isOfType(nextState, states.CustomState)) cast(nextState, states.CustomState).scriptPath = scriptPath;
+ 		if(nextState == null) nextState = FlxG.state;
+ 		if(nextState == FlxG.state)
+ 		{
+diff -ruN a/source/backend/Paths.hx b/source/backend/Paths.hx
+--- a/source/backend/Paths.hx	2026-11-01 00:45:22.504751100 +0000
++++ b/source/backend/Paths.hx	2026-10-29 15:27:42.000000000 +0000
+@@ -33,6 +33,23 @@
+ 	}
+ 
+ 	public static var dumpExclusions:Array<String> = ['assets/shared/music/freakyMenu.$SOUND_EXT'];
++	/** drop one cached image by file name (e.g. "blueCloudsScary.png") so it can be reloaded fresh */
++	public static function clearImageFromMemory(key:String)
++	{
++		var name:String = key.endsWith('.png') ? key.substr(0, key.length - 4) : key;
++		for (k in currentTrackedAssets.keys())
++		{
++			if (k == key || k.endsWith('/' + key) || k.endsWith('/' + name + '.png') || k == name)
++			{
++				var obj = currentTrackedAssets.get(k);
++				@:privateAccess FlxG.bitmap._cache.remove(k);
++				openfl.Assets.cache.removeBitmapData(k);
++				currentTrackedAssets.remove(k);
++				if(obj != null) { obj.persist = false; obj.destroyOnNoUse = true; obj.destroy(); }
++			}
++		}
++	}
++
+ 	/// haya I love you for the base cache dump I took to the max
+ 	public static function clearUnusedMemory() {
+ 		// clear non local assets in the tracked assets list
+@@ -170,6 +187,16 @@
+ 		return getPath('$key.lua', TEXT, library);
+ 	}
+ 
++	/** path of a mod-side script (e.g. "states/TitleState" -> mods/<mod>/states/TitleState.hx) */
++	static public function hscript(key:String)
++	{
++		#if MODS_ALLOWED
++		var file:String = modFolders('$key.hx');
++		if(FileSystem.exists(file)) return file;
++		#end
++		return 'assets/$key.hx';
++	}
++
+ 	static public function video(key:String)
+ 	{
+ 		#if MODS_ALLOWED
+@@ -468,8 +495,45 @@
+ 	}
+ 
+ 	#if MODS_ALLOWED
+-	inline static public function mods(key:String = '') {
+-		return 'mods/' + key;
++	static public function mods(key:String = ''):String {
++		return fixCase('mods/' + key);
++	}
++
++	// The mod was made on Windows, where file names are not case sensitive. On Linux a script asking for
++	// "majincutscene" must still find "majinCutscene.mp4", so a path that does not exist as spelled is
++	// matched against the real directory listings one folder at a time, ignoring case.
++	static var caseDirCache:Map<String, Map<String, String>> = [];
++	static var caseFixCache:Map<String, String> = [];
++
++	static function fixCase(path:String):String
++	{
++		#if (linux || mac)
++		if (FileSystem.exists(path)) return path;
++		var cached:Null<String> = caseFixCache.get(path);
++		if (cached != null) return cached;
++
++		var parts:Array<String> = path.split('/');
++		var cur:String = parts.shift();
++		for (part in parts)
++		{
++			if (part == '' || part == '.' || part == '..') { cur += '/' + part; continue; }
++			var listing:Map<String, String> = caseDirCache.get(cur);
++			if (listing == null)
++			{
++				listing = [];
++				if (FileSystem.exists(cur) && FileSystem.isDirectory(cur))
++					for (name in FileSystem.readDirectory(cur)) listing.set(name.toLowerCase(), name);
++				caseDirCache.set(cur, listing);
++			}
++			var real:Null<String> = listing.get(part.toLowerCase());
++			if (real == null) return path; // really missing
++			cur += '/' + real;
++		}
++		caseFixCache.set(path, cur);
++		return cur;
++		#else
++		return path;
++		#end
+ 	}
+ 
+ 	inline static public function modsFont(key:String) {
+diff -ruN a/source/backend/PsychGame.hx b/source/backend/PsychGame.hx
+--- a/source/backend/PsychGame.hx	1970-01-01 01:00:00.000000000 +0100
++++ b/source/backend/PsychGame.hx	2026-11-01 00:41:42.477078609 +0000
+@@ -0,0 +1,248 @@
++package backend;
++
++import flixel.FlxG;
++import flixel.FlxGame;
++import flixel.graphics.tile.FlxDrawBaseItem;
++
++/**
++ * FlxGame that survives a broken draw queue: if drawing a frame throws, say which queued item was bad,
++ * drop that frame's queue and carry on, instead of closing the game.
++ */
++@:cppFileCode('#include <malloc.h>')
++class PsychGame extends FlxGame
++{
++	var drawFailures:Int = 0;
++	var vsrT:Float = 0;
++	var vsrDone:Bool = false;
++
++	@:access(flixel.system.frontEnds.BitmapFrontEnd)
++	static function cachedGraphics():Int
++	{
++		var n = 0;
++		for (_ in FlxG.bitmap._cache.keys()) n++;
++		return n;
++	}
++
++	var trimT:Int = 0;
++	var sweepT:Int = 0;
++	var trimState:String = '';
++
++	/**
++	 * RAM: an image is uploaded to the GPU the first time it is drawn, and after that the game keeps a second full copy in
++	 * system RAM that nothing reads (the mod never reads image pixels). Once an image's texture is up to date its RAM copy is
++	 * freed. Nothing is preloaded, so video memory use is the same as before and the picture is identical. After a
++	 * screen change the freed memory is also handed back to the system.
++	 */
++	@:access(openfl.display.BitmapData)
++	function trimMemory():Void
++	{
++		#if (linux && cpp)
++		if (ClientPrefs.data.cacheOnGPU) return;
++		if (++sweepT >= 45)
++		{
++			sweepT = 0;
++			var ctx = FlxG.stage.context3D;
++			if (ctx != null)
++			{
++				for (k => g in Paths.currentTrackedAssets)
++				{
++					if (g == null) continue;
++					var b = g.bitmap;
++					if (b == null || !b.readable || b.image == null || b.__texture == null || b.image.version != b.__textureVersion) continue;
++					if (k.indexOf('noteColorMenu') >= 0 || k.indexOf('/icons/') >= 0) continue; // the editors / options read these
++					b.disposeImage();
++					b.getTexture(ctx); // texture already current: this just lets go of the RAM copy
++				}
++			}
++		}
++		var st = FlxG.state == null ? '' : Type.getClassName(Type.getClass(FlxG.state));
++		if (st != trimState) { trimState = st; trimT = 150; }
++		if (trimT > 0 && --trimT == 0 && st != 'states.PlayState')
++		{
++			cpp.vm.Gc.run(true);
++			cpp.vm.Gc.compact();
++			untyped __cpp__('malloc_trim(0)');
++		}
++		#end
++	}
++
++	var memT:Float = 0;
++	var lastT:Int = 0;
++	var frames:Int = 0;
++	var frameSum:Int = 0;
++	var frameMax:Int = 0;
++	var slow:Int = 0;
++	var memState:String = '';
++
++	/** Debug builds: a line in the log every 5 s and on every state change, so leaks and growth between screens show up. */
++	function memLog():Void
++	{
++		#if (linux && vsr_debug)
++		var nowT = openfl.Lib.getTimer();
++		if (lastT > 0) { var d = nowT - lastT; frames++; frameSum += d; if (d > frameMax) frameMax = d; if (d > 50) slow++; }
++		lastT = nowT;
++		memT += FlxG.elapsed;
++		var st = FlxG.state == null ? '' : Type.getClassName(Type.getClass(FlxG.state));
++		if (memT < 5 && st == memState) return;
++		memT = 0;
++		memState = st;
++		try
++		{
++			var rss = '?';
++			for (l in sys.io.File.read('/proc/self/status').readAll().toString().split('\n'))
++				if (StringTools.startsWith(l, 'VmRSS:')) { rss = StringTools.trim(l.substr(6)); break; }
++			var heap = Std.int(cpp.vm.Gc.memInfo(cpp.vm.Gc.MEM_INFO_USAGE) / 1048576);
++			var tracked = 0;
++			for (_ in Paths.currentTrackedAssets.keys()) tracked++;
++			Sys.println('[mem] rss=' + rss + ' gcheap=' + heap + 'MB images=' + tracked + ' fps=' + (frameSum > 0 ? Std.int(frames * 1000 / frameSum) : 0) + ' worstframe=' + frameMax + 'ms slowframes=' + slow + ' state=' + st);
++			frames = 0; frameSum = 0; frameMax = 0; slow = 0;
++		}
++		catch (e:Dynamic) {}
++		#end
++	}
++
++	var lastBorderless:Bool = false;
++
++	/** The end credits turn the window borderless and fullscreen-sized; the desktop isn't visible there, so the bar goes away
++	 * with it and comes back when the window gets its border again. (Trinity's own see-through part is handled separately.) */
++	function followBorderless():Void
++	{
++		var win = lime.app.Application.current.window;
++		if (win == null || win.borderless == lastBorderless) return;
++		lastBorderless = win.borderless;
++		if (backend.WindowTransparency.barWatching()) return;
++		if (lastBorderless) backend.TaskbarHider.hide(); else backend.TaskbarHider.restore();
++	}
++
++	var sizeWrong:Float = 0;
++	var sizeTries:Int = 0;
++
++	/** Some compositors hand a window back its old size after it leaves borderless/fullscreen. In the fixed-size menus the
++	 * window must match the game; if it hasn't for half a second, ask again (a few times) and recentre. */
++	function fixWindowSize():Void
++	{
++		var win = lime.app.Application.current.window;
++		if (win == null || win.borderless || win.fullscreen || !Std.isOfType(FlxG.scaleMode, flixel.system.scaleModes.StageSizeScaleMode)
++			|| (win.width == FlxG.width && win.height == FlxG.height))
++		{
++			sizeWrong = 0;
++			sizeTries = 0;
++			return;
++		}
++		sizeWrong += FlxG.elapsed;
++		if (sizeWrong < 0.5 || sizeTries >= 4) return;
++		sizeWrong = 0;
++		sizeTries++;
++		FlxG.resizeWindow(FlxG.width, FlxG.height);
++		var dm = win.display != null ? win.display.currentMode : null;
++		if (dm != null) { win.x = Std.int((Math.ceil(dm.width * win.scale) - win.width) / 2); win.y = Std.int((Math.ceil(dm.height * win.scale) - win.height) / 2); }
++		Sys.println('[window] size self-correct -> ' + FlxG.width + 'x' + FlxG.height);
++	}
++
++	// testing aid (VSR_LAYERED=1): after 6 s paint the key colour and switch the see-through window on, on any screen
++	override function update():Void
++	{
++		super.update();
++		backend.WindowTransparency.tick();
++		fixWindowSize();
++		trimMemory();
++		memLog();
++		followBorderless();
++		#if (linux && vsr_debug)
++		if (!vsrDone && backend.VsrDebug.env('VSR_LAYERED') != null)
++		{
++			vsrT += FlxG.elapsed;
++			if (vsrT > 6 && FlxG.state != null)
++			{
++				vsrDone = true;
++				if (backend.VsrDebug.env('VSR_LAYERED') == '2')
++				{
++					// two cameras: a red one underneath, and a top one that is key coloured on its left half only
++					for (m in FlxG.state.members) if (m != null) m.visible = false;
++					var under = new flixel.FlxCamera(0, 0, FlxG.width, FlxG.height);
++					under.bgColor = 0xFFFF0000;
++					FlxG.cameras.add(under, false);
++					FlxG.cameras.list.remove(under);
++					FlxG.cameras.list.insert(0, under);
++					FlxG.game.setChildIndex(under.flashSprite, FlxG.game.getChildIndex(FlxG.camera.flashSprite));
++					FlxG.camera.bgColor = 0x00000000;
++					var keyHalf = new flixel.FlxSprite(0, 0); keyHalf.makeGraphic(Std.int(FlxG.width / 2), FlxG.height, 0xFF131313); keyHalf.cameras = [FlxG.camera]; FlxG.state.add(keyHalf); keyHalf.visible = true;
++					FlxG.state.visible = true;
++					backend.WindowTransparency.setLayered(true);
++					return;
++				}
++				FlxG.camera.bgColor = 0xFF131313;
++				FlxG.state.visible = false;
++				var box = new flixel.FlxSprite(300, 250); box.makeGraphic(200, 200, 0xFFFF0000); box.cameras = [FlxG.camera]; FlxG.state.add(box); box.visible = true; FlxG.state.visible = true; for (m in FlxG.state.members) if (m != null && m != box) m.visible = false;
++				backend.WindowTransparency.setLayered(true);
++			}
++		}
++		#end
++	}
++
++	@:access(flixel.FlxCamera)
++	override function draw():Void
++	{
++		try
++		{
++			super.draw();
++		}
++		catch (e:Dynamic)
++		{
++			drawFailures++;
++			if (drawFailures <= 5) report(e);
++			for (cam in FlxG.cameras.list) if (cam != null) cam.clearDrawStack();
++			if (drawFailures > 120) throw e; // not a one-off, let the crash handler have it
++		}
++	}
++
++	@:access(flixel.FlxCamera)
++	function report(e:Dynamic):Void
++	{
++		Sys.println('[draw] frame failed: ' + Std.string(e) + '\n' + haxe.CallStack.toString(haxe.CallStack.exceptionStack()) + '\nstate=' + Type.getClassName(Type.getClass(FlxG.state)));
++		for (cam in FlxG.cameras.list)
++		{
++			if (cam == null) continue;
++			var item:FlxDrawBaseItem<Dynamic> = cam._headOfDrawStack;
++			while (item != null)
++			{
++				Sys.println('[draw] item ' + Type.getClassName(Type.getClass(item)) + ' graphic=' + (item.graphics == null ? 'null' : item.graphics.key) + ' gshader=' + (item.graphics != null && item.graphics.shader != null));
++				if (Std.isOfType(item, flixel.graphics.tile.FlxDrawQuadsItem))
++				{
++					var q:flixel.graphics.tile.FlxDrawQuadsItem = cast item;
++					var sh:Dynamic = q.shader;
++					Sys.println('[draw]   item shader=' + (sh == null ? 'null' : Type.getClassName(Type.getClass(sh)) + ' hasBitmap=' + (sh.bitmap != null)));
++				}
++				if (item.graphics != null)
++				{
++					var gs:Dynamic = item.graphics.shader;
++					Sys.println('[draw]   graphic shader bitmap=' + (gs != null && gs.bitmap != null));
++					if (gs == null || gs.bitmap == null) // give the image a fresh, working shader
++						Reflect.setProperty(item.graphics, 'shader', new flixel.system.FlxAssets.FlxShader());
++				}
++				if (item.graphics == null || item.graphics.bitmap == null)
++					Sys.println('[draw] bad item on camera ' + Type.getClassName(Type.getClass(cam)) + ': graphic=' + (item.graphics == null ? 'null' : item.graphics.key));
++				item = item.next;
++			}
++		}
++	}
++
++	static function scanSprites(g:flixel.group.FlxGroup.FlxTypedGroup<Dynamic>, key:String):Void
++	{
++		for (m in g.members)
++		{
++			if (m == null) continue;
++			if (Std.isOfType(m, flixel.FlxSprite))
++			{
++				var spr:flixel.FlxSprite = cast m;
++				if (spr.graphic != null && spr.graphic.key == key && spr.visible && spr.exists)
++				{
++					var sh:Dynamic = spr.shader;
++					Sys.println('[draw]   sprite ' + Type.getClassName(Type.getClass(spr)) + ' shader=' + (sh == null ? 'null' : Type.getClassName(Type.getClass(sh))) + ' cams=' + (spr.cameras == null ? 'null' : '' + spr.cameras.length) + ' alpha=' + spr.alpha + ' size=' + spr.width + 'x' + spr.height);
++				}
++			}
++			if (Std.isOfType(m, flixel.group.FlxGroup.FlxTypedGroup)) scanSprites(cast m, key);
++			else if (Std.isOfType(m, flixel.group.FlxSpriteGroup)) scanSprites(cast (cast m : flixel.group.FlxSpriteGroup).group, key);
++		}
++	}
++}
+diff -ruN a/source/backend/TaskbarHider.hx b/source/backend/TaskbarHider.hx
+--- a/source/backend/TaskbarHider.hx	1970-01-01 01:00:00.000000000 +0100
++++ b/source/backend/TaskbarHider.hx	2026-10-30 01:37:59.000000000 +0000
+@@ -0,0 +1,50 @@
++package backend;
++
++/**
++ * "Hide Taskbar" / "Restore Taskbar" chart events (not used any more: Trinity hides the bar by step instead, see PlayState.stepHit). On Windows the original hides
++ * the taskbar. Here the bar is whatever panel the desktop has. With "Taskbar Hiding" on, two small shell scripts
++ * next to the game, which the player writes for their own bar, are run:
++ *   hide-bar.sh     run when the taskbar should go away
++ *   restore-bar.sh  run when it should come back
++ * Without those scripts, Hyprland falls back to putting the game window in compositor fullscreen, which covers
++ * layer-shell bars, and back again.
++ */
++class TaskbarHider
++{
++	static var hidden:Bool = false;
++	static var covered:Bool = false;
++
++	public static function hide():Void
++	{
++		if (hidden) return;
++		hidden = true;
++		// "Taskbar Hiding": the player's own script knows how to hide their bar
++		if (ClientPrefs.data.windowClosing) runScript('hide-bar.sh');
++		// "Cover Bar": Hyprland shows the game window above layer-shell bars while it is in compositor fullscreen
++		if (ClientPrefs.data.coverBar) { covered = true; hypr(['dispatch', 'fullscreenstate', '2', '0']); }
++	}
++
++	public static function restore():Void
++	{
++		if (!hidden) return;
++		hidden = false;
++		if (ClientPrefs.data.windowClosing) runScript('restore-bar.sh');
++		if (covered) { covered = false; hypr(['dispatch', 'fullscreenstate', '0', '0']); }
++	}
++
++	static function runScript(script:String):Void
++	{
++		#if (linux || mac)
++		try { if (sys.FileSystem.exists(script)) new sys.io.Process('/bin/sh', [script]); }
++		catch (e:Dynamic) trace('taskbar: ' + e);
++		#end
++	}
++
++	static function hypr(args:Array<String>):Void
++	{
++		#if (linux || mac)
++		try { if (Sys.getEnv('HYPRLAND_INSTANCE_SIGNATURE') != null) new sys.io.Process('hyprctl', args); }
++		catch (e:Dynamic) trace('hyprctl: ' + e);
++		#end
++	}
++}
+diff -ruN a/source/backend/VsrDebug.hx b/source/backend/VsrDebug.hx
+--- a/source/backend/VsrDebug.hx	1970-01-01 01:00:00.000000000 +0100
++++ b/source/backend/VsrDebug.hx	2026-11-01 00:41:42.360111736 +0000
+@@ -0,0 +1,19 @@
++package backend;
++
++/**
++ * Test hooks (VSR_* environment variables) and the memory/fps logger only exist in debug builds
++ * (built with -Dvsr_debug). In a release build env() is always null, so every hook is dead code.
++ */
++class VsrDebug
++{
++	public static inline var ON:Bool = #if vsr_debug true #else false #end;
++
++	public static inline function env(name:String):Null<String>
++	{
++		#if vsr_debug
++		return Sys.getEnv(name);
++		#else
++		return null;
++		#end
++	}
++}
+diff -ruN a/source/backend/WindowTransparency.hx b/source/backend/WindowTransparency.hx
+--- a/source/backend/WindowTransparency.hx	1970-01-01 01:00:00.000000000 +0100
++++ b/source/backend/WindowTransparency.hx	2026-11-01 00:41:42.477320560 +0000
+@@ -0,0 +1,244 @@
++package backend;
++
++import flixel.FlxG;
++import openfl.Lib;
++import openfl.display.Shader;
++import openfl.filters.ShaderFilter;
++
++/**
++ * Linux stand-in for the Windows "layered window with a colour key" trick the mod uses for the
++ * see-through desktop sections: while on, the stage clears to alpha 0 and a final pass turns the
++ * key colour (0x131313 in the mod) into alpha 0, so a compositor shows the desktop through it.
++ */
++class WindowTransparency
++{
++	public static var layered(default, null):Bool = false;
++
++	static var key:Int = 0x131313;
++	static var shader:ColorKeyShader;
++	static var filter:ShaderFilter;
++
++	public static function setKey(k:Int):Void
++	{
++		key = k & 0xFFFFFF;
++		if (shader != null) updateKey();
++	}
++
++	static var wanted:Bool = false;
++	static var pending:Bool = false;
++	static var probeAdded:Bool = false;
++	/** window.opacity as the mod last set it (lime stores it here on Linux, since compositors often ignore the X11 hint). */
++	public static var opacity:Float = 1;
++	static var appliedOpacity:Float = 1;
++	static var filtersSet:Bool = false;
++	static var lastCams:Array<flixel.FlxCamera> = [];
++	static var barWatch:Bool = false;
++	static var lastSee:Bool = false;
++	static var agree:Int = 0;
++	public static function barWatching():Bool return barWatch;
++	public static function watchBar(on:Bool):Void { barWatch = on; agree = 0; lastSee = false; }
++	static var probeCount:Int = 0;
++	static var probeFrames:Int = 0;
++
++	/** The mod flips this on and off several times per step; only the state at the end of the frame is applied. */
++	public static function setLayered(on:Bool):Void
++	{
++		wanted = on;
++		if (pending) return;
++		pending = true;
++		FlxG.signals.preUpdate.addOnce(apply);
++	}
++
++	static function apply():Void
++	{
++		pending = false;
++		var on = wanted;
++		if (on == layered) return;
++		layered = on;
++		var stage = Lib.current.stage;
++		if (on)
++		{
++			if (shader == null)
++			{
++				shader = new ColorKeyShader();
++				filter = new ShaderFilter(shader);
++			}
++			updateKey();
++			stage.color = null; // clear the window to alpha 0 instead of opaque black
++			try
++			{
++				var gl = lime.app.Application.current.window.context.gl;
++				trace('transparent window on: framebuffer alpha bits=' + gl.getParameter(gl.ALPHA_BITS) + ' (needs 8 to see through)');
++			}
++			catch (e:Dynamic) trace('transparent window on: could not read alpha bits');
++			if (!probeAdded)
++			{
++				probeAdded = true;
++				lime.app.Application.current.window.onRender.add(probe, false, -100);
++			}
++			probeCount = 0;
++			probeFrames = 0;
++			watchFrames = 0;
++		}
++		else
++		{
++			stage.color = opacity < 1 ? null : 0x000000;
++		}
++	}
++
++	/**
++	 * The Windows layered window keys the FINAL picture: a key coloured pixel on a top camera hides everything below it
++	 * and then turns see-through. Keying each camera alone would let the cameras below shine through, so while layered all
++	 * camera sprites sit in one holder and the key pass runs once over the holder.
++	 */
++	static var holder:openfl.display.Sprite;
++
++	@:access(flixel.FlxCamera)
++	@:access(flixel.FlxGame)
++	public static function tick():Void
++	{
++		if (opacity != appliedOpacity)
++		{
++			appliedOpacity = opacity;
++			FlxG.game.alpha = opacity;
++			FlxG.stage.color = (opacity < 1 || layered) ? null : 0x000000;
++			Sys.println('[window] opacity ' + opacity);
++		}
++		if (filter == null) return;
++		if (!layered)
++		{
++			if (holder != null && holder.parent != null) release();
++			return;
++		}
++		// nothing changed since last frame: the camera sprites are all still in the holder, in order, with the filter on
++		var list = FlxG.cameras.list;
++		if (holder != null && holder.parent != null && filtersSet && list.length == lastCams.length)
++		{
++			var same = true;
++			for (k in 0...list.length)
++			{
++				var c = list[k];
++				if (c != lastCams[k] || (c != null && c.flashSprite != null && c.flashSprite.parent != holder)) { same = false; break; }
++			}
++			if (same) return;
++		}
++		var game:openfl.display.Sprite = FlxG.game;
++		if (holder == null) holder = new openfl.display.Sprite();
++		if (holder.parent == null)
++		{
++			var idx = game.getChildIndex(FlxG.game._inputContainer);
++			if (FlxG.cameras.list.length > 0 && FlxG.cameras.list[0] != null && FlxG.cameras.list[0].flashSprite.parent == game)
++				idx = game.getChildIndex(FlxG.cameras.list[0].flashSprite);
++			game.addChildAt(holder, idx);
++		}
++		var i = 0;
++		for (cam in FlxG.cameras.list)
++		{
++			if (cam == null || cam.flashSprite == null) continue;
++			if (cam.flashSprite.parent != holder || holder.getChildIndex(cam.flashSprite) != i)
++				holder.addChildAt(cam.flashSprite, Std.int(Math.min(i, holder.numChildren)));
++			i++;
++		}
++		// cameras the mod removed while layered
++		var n = holder.numChildren;
++		while (n > i) { holder.removeChildAt(n - 1); n--; }
++		holder.filters = [filter];
++		filtersSet = true;
++		lastCams = list.copy();
++	}
++
++	/** Puts the camera sprites back where flixel expects them. */
++	@:access(flixel.FlxCamera)
++	static function release():Void
++	{
++		var game:openfl.display.Sprite = FlxG.game;
++		var idx = game.getChildIndex(holder);
++		holder.filters = [];
++		filtersSet = false;
++		lastCams = [];
++		var k = 0;
++		for (cam in FlxG.cameras.list)
++		{
++			if (cam == null || cam.flashSprite == null) continue;
++			game.addChildAt(cam.flashSprite, Std.int(Math.min(idx + 1 + k, game.numChildren)));
++			k++;
++		}
++		game.removeChild(holder);
++	}
++
++	/** Diagnostic: after the stage has drawn, read back a few pixels of the window so the log shows what is really on screen. */
++	static var watchFrames:Int = 0;
++	static function probe(ctx:lime.graphics.RenderContext):Void
++	{
++		// the desktop bar follows the desktop: it is shown while any sampled point of the window is see-through
++		// and hidden while the window is solid (two matching samples in a row, so a single flash can't toggle it).
++		// Only runs while a song has asked for it (Trinity's fullscreen part), a handful of 1-pixel reads per second.
++		if (barWatch && !layered) TaskbarHider.hide(); // solid window: the desktop isn't visible
++		else if (barWatch && ++watchFrames % 6 == 0)
++		{
++			try
++			{
++				var gl = ctx.gl;
++				var w = lime.app.Application.current.window.width;
++				var h = lime.app.Application.current.window.height;
++				var b = new lime.utils.UInt8Array(4);
++				var see = false;
++				for (pt in [[4, 4], [w - 4, 4], [4, h - 4], [w - 4, h - 4], [Std.int(w / 2), Std.int(h / 2)]])
++				{
++					gl.readPixels(pt[0], pt[1], 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b);
++					if (b[3] == 0) { see = true; break; }
++				}
++				if (see == lastSee) { if (agree < 2) agree++; } else { lastSee = see; agree = 1; }
++				if (agree == 2)
++				{
++					if (see) TaskbarHider.restore(); else TaskbarHider.hide();
++				}
++			}
++			catch (e:Dynamic) {}
++		}
++		if (!VsrDebug.ON || !layered || probeCount >= 6) return;
++		probeFrames++;
++		if (probeFrames % 120 != 30) return;
++		probeCount++;
++		try
++		{
++			var gl = ctx.gl;
++			var w = lime.app.Application.current.window.width;
++			var h = lime.app.Application.current.window.height;
++			var out = '';
++			for (pt in [[4, 4], [Std.int(w / 2), Std.int(h / 2)], [w - 4, h - 4]])
++			{
++				var buf = new lime.utils.UInt8Array(4);
++				gl.readPixels(pt[0], pt[1], 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
++				out += ' (' + pt[0] + ',' + pt[1] + ')=' + buf[0] + ',' + buf[1] + ',' + buf[2] + ',' + buf[3];
++			}
++			trace('transparent window pixels rgba:' + out + ' window ' + w + 'x' + h);
++		}
++		catch (e:Dynamic) trace('transparent window probe failed: ' + e);
++	}
++
++	static function updateKey():Void
++	{
++		shader.data.uKey.value = [((key >> 16) & 0xFF) / 255, ((key >> 8) & 0xFF) / 255, (key & 0xFF) / 255];
++	}
++}
++
++class ColorKeyShader extends flixel.system.FlxAssets.FlxShader
++{
++	@:glFragmentSource('
++		#pragma header
++		uniform vec3 uKey;
++		const vec3 kKey = vec3(0.07451);
++		void main()
++		{
++			vec4 c = texture2D(bitmap, openfl_TextureCoordv);
++			vec3 d = abs(c.rgb - (uKey.x + uKey.y + uKey.z > 0.0 ? uKey : kKey));
++			if (c.a < 0.01 || max(d.r, max(d.g, d.b)) < 0.025) gl_FragColor = vec4(0.0);
++			else gl_FragColor = vec4(c.rgb, 1.0);
++		}
++	')
++	public function new()
++	{
++		super();
++	}
++}
+diff -ruN a/source/debug/FPSCounter.hx b/source/debug/FPSCounter.hx
+--- a/source/debug/FPSCounter.hx	2026-11-01 00:45:22.506481563 +0000
++++ b/source/debug/FPSCounter.hx	2026-10-29 13:46:18.000000000 +0000
+@@ -16,6 +16,9 @@
+ 	**/
+ 	public var currentFPS(default, null):Int;
+ 
++	/** normal text colour (the menu scripts switch it to black on light screens) */
++	public var defaultColor:Int = 0xFFFFFFFF;
++
+ 	/**
+ 		The current memory usage (WARNING: this is NOT your total program memory usage, rather it shows the garbage collector memory)
+ 	**/
+@@ -65,7 +68,7 @@
+ 		text = 'FPS: ${currentFPS}'
+ 		+ '\nMemory: ${flixel.util.FlxStringUtil.formatBytes(memoryMegas)}';
+ 
+-		textColor = 0xFFFFFFFF;
++		textColor = defaultColor;
+ 		if (currentFPS < FlxG.drawFramerate * 0.5)
+ 			textColor = 0xFFFF0000;
+ 	}
+diff -ruN a/source/objects/MaigoSpeaker.hx b/source/objects/MaigoSpeaker.hx
+--- a/source/objects/MaigoSpeaker.hx	1970-01-01 01:00:00.000000000 +0100
++++ b/source/objects/MaigoSpeaker.hx	2026-10-29 13:45:12.000000000 +0000
+@@ -0,0 +1,140 @@
++package objects;
++
++import flixel.group.FlxSpriteGroup;
++import flixel.addons.text.FlxTypeText;
++import flixel.sound.FlxSound;
++
++/**
++ * Maigo's dialogue box (gallery, music player, computer): a dark backing, a face icon, and
++ * typed text that is spoken by a voice clip.
++ *
++ * A dialogue line is [text, emote, voiceKey, typeDelay, holdSeconds, fontSize]:
++ *   emote       animation name on the icon (or on `emoteOutput`)
++ *   voiceKey    clip under sounds/maigo/ (e.g. "musicPlayer/3")
++ *   typeDelay   seconds per typed character
++ *   holdSeconds pause after the voice clip ends before the next line (inferred, see docs)
++ *   fontSize    text size, smaller for longer lines (optional, default 39)
++ */
++class MaigoSpeaker extends FlxSpriteGroup
++{
++	public var backing:FlxSprite;
++	public var icon:FlxSprite;
++	public var text:FlxTypeText;
++	public var voiceline:FlxSound;
++	public var emoteOutput:FlxSprite;
++	public var currentlySpeaking:Bool = false;
++	public var currentDialogueArray:Array<Dynamic> = [];
++	public var resetTimer:FlxTimer;
++
++	/** called when a line begins, with the line array */
++	public dynamic function onStartDialogue(line:Array<Dynamic>):Void {}
++
++	/** called when the last line has finished */
++	public dynamic function onEndReached():Void {}
++
++	public static inline var DEFAULT_SIZE:Int = 39;
++	static inline var BOX_HEIGHT:Int = 170;
++
++	var iconVisible:Bool = true;
++
++	public function new()
++	{
++		super();
++		scrollFactor.set();
++
++		var top:Float = FlxG.height - BOX_HEIGHT;
++
++		backing = new FlxSprite(0, top).makeGraphic(FlxG.width, BOX_HEIGHT, 0xFF000000);
++		backing.alpha = 0.001;
++		add(backing);
++
++		icon = new FlxSprite(70, top + 44);
++		icon.frames = Paths.getSparrowAtlas('menus/gallery/maigo/talk');
++		for (anim in ['talk', 'hype', 'eyesClosed', 'embarrassed'])
++			icon.animation.addByPrefix(anim, anim, 15, true);
++		icon.animation.play('talk');
++		icon.antialiasing = false;
++		icon.alpha = 0.001;
++		add(icon);
++
++		text = new FlxTypeText(258, top + 20, 580, '', DEFAULT_SIZE);
++		text.setFormat(Paths.font('sonic2HUD.ttf'), DEFAULT_SIZE, 0xFFFFFFFF, LEFT);
++		add(text);
++
++		emoteOutput = icon;
++		swapSpeaker(true);
++	}
++
++	/** true: face icon at the left with the text beside it; false: no icon, text across the box */
++	public function swapSpeaker(showIcon:Bool):Void
++	{
++		iconVisible = showIcon;
++		if (showIcon)
++		{
++			icon.x = 70;
++			text.x = 258;
++			text.fieldWidth = 580;
++		}
++		else
++		{
++			text.x = 0;
++			text.fieldWidth = FlxG.width;
++		}
++		if (!currentlySpeaking) icon.alpha = 0.001;
++	}
++
++	public function startDialogue(lines:Array<Dynamic>):Void
++	{
++		currentDialogueArray = lines.copy();
++		currentlySpeaking = true;
++		backing.alpha = 0.5;
++		nextDialogue();
++	}
++
++	public function nextDialogue():Void
++	{
++		if (resetTimer != null) resetTimer.cancel();
++
++		if (currentDialogueArray.length == 0)
++		{
++			currentlySpeaking = false;
++			backing.alpha = 0.001;
++			icon.alpha = 0.001;
++			text.resetText('');
++			onEndReached();
++			return;
++		}
++
++		var line:Array<Dynamic> = currentDialogueArray.shift();
++		var size:Int = line.length > 5 && line[5] != null ? Std.int(line[5]) : DEFAULT_SIZE;
++		var delay:Float = line.length > 3 && line[3] != null ? line[3] : 0.05;
++		var hold:Float = line.length > 4 && line[4] != null ? line[4] : 1.0;
++
++		onStartDialogue(line);
++
++		if (emoteOutput != null)
++		{
++			emoteOutput.alpha = 1;
++			if (emoteOutput.animation.exists(line[1])) emoteOutput.animation.play(line[1], true);
++		}
++		if (iconVisible) icon.alpha = 1;
++
++		text.size = size;
++		text.resetText(line[0]);
++		text.start(delay, true, false, null, null);
++
++		if (voiceline != null) voiceline.stop();
++		voiceline = FlxG.sound.play(Paths.sound('maigo/' + line[2]));
++		voiceline.onComplete = function()
++		{
++			resetTimer = new FlxTimer().start(hold, function(_) nextDialogue());
++		};
++	}
++
++	override function destroy():Void
++	{
++		if (resetTimer != null) resetTimer.cancel();
++		if (voiceline != null) { voiceline.onComplete = null; voiceline.stop(); }
++		super.destroy();
++	}
++}
+diff -ruN a/source/options/ControlsSubState.hx b/source/options/ControlsSubState.hx
+--- a/source/options/ControlsSubState.hx	2026-11-01 00:45:22.509308832 +0000
++++ b/source/options/ControlsSubState.hx	2026-10-29 14:42:21.000000000 +0000
+@@ -10,7 +10,7 @@
+ import flixel.input.gamepad.FlxGamepadInputID;
+ import flixel.input.gamepad.FlxGamepadManager;
+ 
+-class ControlsSubState extends MusicBeatSubstate
++class ControlsSubState extends MusicBeatState
+ {
+ 	var curSelected:Int = 0;
+ 	var curAlt:Bool = false;
+@@ -277,7 +277,8 @@
+ 		{
+ 			if(FlxG.keys.justPressed.ESCAPE || FlxG.gamepads.anyJustPressed(B))
+ 			{
+-				close();
++				ClientPrefs.saveSettings();
++				MusicBeatState.switchState(new states.CustomState(), Paths.hscript('states/OptionsState'));
+ 				return;
+ 			}
+ 			if(FlxG.keys.justPressed.CONTROL || FlxG.gamepads.anyJustPressed(LEFT_SHOULDER) || FlxG.gamepads.anyJustPressed(RIGHT_SHOULDER)) swapMode();
+diff -ruN a/source/options/OptionsState.hx b/source/options/OptionsState.hx
+--- a/source/options/OptionsState.hx	2026-11-01 00:45:22.509308832 +0000
++++ b/source/options/OptionsState.hx	2026-10-29 14:42:21.000000000 +0000
+@@ -16,7 +16,7 @@
+ 			case 'Note Colors':
+ 				openSubState(new options.NotesSubState());
+ 			case 'Controls':
+-				openSubState(new options.ControlsSubState());
++				MusicBeatState.switchState(new options.ControlsSubState());
+ 			case 'Graphics':
+ 				openSubState(new options.GraphicsSettingsSubState());
+ 			case 'Visuals and UI':
+diff -ruN a/source/psychlua/FunkinLua.hx b/source/psychlua/FunkinLua.hx
+--- a/source/psychlua/FunkinLua.hx	2026-11-01 00:45:22.510306707 +0000
++++ b/source/psychlua/FunkinLua.hx	2026-10-30 00:31:03.000000000 +0000
+@@ -99,6 +99,10 @@
+ 		set('curStage', PlayState.SONG.stage);
+ 
+ 		set('isStoryMode', PlayState.isStoryMode);
++		set('checkpointTime', PlayState.checkpointTime);
++		set('windowFuckery', ClientPrefs.data.windowFuckery);
++		set('windowClosing', ClientPrefs.data.windowClosing);
++		set('songVariation', PlayState.songVariation);
+ 		set('difficulty', PlayState.storyDifficulty);
+ 
+ 		set('difficultyName', Difficulty.getString());
+@@ -201,6 +205,18 @@
+ 		// build target (windows, mac, linux, etc.)
+ 		set('buildTarget', LuaUtils.getBuildTarget());
+ 
++		// The mod's transparent-window script talks to Windows through ffi. On other systems answer those few
++		// calls here and make the window see-through with an alpha window instead (backend.WindowTransparency).
++		#if !windows
++		if (scriptName.indexOf('TransparentWindow') != -1)
++		{
++			set('buildTarget', 'windows');
++			Lua_helper.add_callback(lua, 'vsrSetLayered', function(on:Bool) backend.WindowTransparency.setLayered(on));
++			Lua_helper.add_callback(lua, 'vsrSetKey', function(k:Int) backend.WindowTransparency.setKey(k));
++			LuaL.dostring(lua, "package.loaded['ffi'] = { cdef = function() end, C = { GetActiveWindow = function() return 1 end, SetWindowLongA = function(h, i, v) vsrSetLayered(v ~= 0) return 0 end, SetLayeredWindowAttributes = function(h, k, a, f) vsrSetKey(k) return 1 end } }");
++		}
++		#end
++
+ 		for (name => func in customFunctions)
+ 		{
+ 			if(func != null)
+@@ -388,6 +404,23 @@
+ 			}
+ 			luaTrace("addLuaScript: Script doesn't exist!", false, false, FlxColor.RED);
+ 		});
++		// fork alias: loadScript(path, ignoreAlreadyRunning)
++		Lua_helper.add_callback(lua, "loadScript", function(luaFile:String, ?ignoreAlreadyRunning:Bool = false) {
++			var foundScript:String = findScript(luaFile);
++			if(foundScript != null)
++			{
++				if(!ignoreAlreadyRunning)
++					for (luaInstance in game.luaArray)
++						if(luaInstance.scriptName == foundScript)
++						{
++							luaTrace('loadScript: The script "' + foundScript + '" is already running!');
++							return;
++						}
++				new FunkinLua(foundScript);
++				return;
++			}
++			luaTrace("loadScript: Script doesn't exist!", false, false, FlxColor.RED);
++		});
+ 		Lua_helper.add_callback(lua, "addHScript", function(luaFile:String, ?ignoreAlreadyRunning:Bool = false) {
+ 			#if HSCRIPT_ALLOWED
+ 			var foundScript:String = findScript(luaFile, '.hx');
+@@ -822,10 +855,7 @@
+ 				FlxTransitionableState.skipNextTransOut = true;
+ 			}
+ 
+-			if(PlayState.isStoryMode)
+-				MusicBeatState.switchState(new StoryMenuState());
+-			else
+-				MusicBeatState.switchState(new FreeplayState());
++			states.CustomState.dataSelect = true; MusicBeatState.switchState(new states.CustomState(), Paths.hscript('states/MainMenuState'));
+ 
+ 			#if DISCORD_ALLOWED DiscordClient.resetClientID(); #end
+ 
+@@ -1096,6 +1126,34 @@
+ 			}
+ 			return true;
+ 		});
++		// scrolling backdrops (fork addition): makeLuaBackdrop(tag, image, axes "X"/"Y"/"XY", x, y)
++		Lua_helper.add_callback(lua, "makeLuaBackdrop", function(tag:String, image:String, ?axes:String = "XY", ?x:Float = 0, ?y:Float = 0) {
++			tag = tag.replace('.', '');
++			LuaUtils.resetSpriteTag(tag);
++			var repeatAxes:flixel.util.FlxAxes = switch((axes == null ? "XY" : axes).toUpperCase()) {
++				case "X": flixel.util.FlxAxes.X;
++				case "Y": flixel.util.FlxAxes.Y;
++				default: flixel.util.FlxAxes.XY;
++			};
++			var backdrop = new flixel.addons.display.FlxBackdrop(Paths.image(image), repeatAxes);
++			backdrop.setPosition(x, y);
++			backdrop.antialiasing = ClientPrefs.data.antialiasing;
++			game.variables.set(tag, backdrop);
++		});
++		Lua_helper.add_callback(lua, "addLuaBackdrop", function(tag:String, front:Bool = false) {
++			var backdrop:FlxSprite = game.variables.get(tag);
++			if(backdrop == null) return false;
++			if(front)
++				LuaUtils.getTargetInstance().add(backdrop);
++			else
++			{
++				if(!game.isDead)
++					game.insert(game.members.indexOf(LuaUtils.getLowestCharacterGroup()), backdrop);
++				else
++					GameOverSubstate.instance.insert(GameOverSubstate.instance.members.indexOf(GameOverSubstate.instance.boyfriend), backdrop);
++			}
++			return true;
++		});
+ 		Lua_helper.add_callback(lua, "setGraphicSize", function(obj:String, x:Int, y:Int = 0, updateHitbox:Bool = true) {
+ 			if(game.getLuaObject(obj)!=null) {
+ 				var shit:FlxSprite = game.getLuaObject(obj);
+diff -ruN a/source/psychlua/LuaUtils.hx b/source/psychlua/LuaUtils.hx
+--- a/source/psychlua/LuaUtils.hx	2026-11-01 00:45:22.510306707 +0000
++++ b/source/psychlua/LuaUtils.hx	2026-10-31 00:33:59.000000000 +0000
+@@ -509,6 +509,8 @@
+ 		switch(cam.toLowerCase()) {
+ 			case 'camhud' | 'hud': return PlayState.instance.camHUD;
+ 			case 'camother' | 'other': return PlayState.instance.camOther;
++			case 'camfx' | 'fx': return PlayState.instance.camFX;
++			case 'camvideo' | 'video': return PlayState.instance.camVideo;
+ 		}
+ 		return PlayState.instance.camGame;
+ 	}
+diff -ruN a/source/psychlua/TextFunctions.hx b/source/psychlua/TextFunctions.hx
+--- a/source/psychlua/TextFunctions.hx	2026-11-01 00:45:22.510802356 +0000
++++ b/source/psychlua/TextFunctions.hx	2026-10-29 13:54:01.000000000 +0000
+@@ -156,6 +156,15 @@
+ 			FunkinLua.luaTrace("getTextFont: Object " + tag + " doesn't exist!", false, false, FlxColor.RED);
+ 			return null;
+ 		});
++		Lua_helper.add_callback(lua, "getTextHeight", function(tag:String) {
++			var obj:FlxText = LuaUtils.getTextObject(tag);
++			if(obj != null)
++			{
++				return obj.height;
++			}
++			FunkinLua.luaTrace("getTextHeight: Object " + tag + " doesn't exist!", false, false, FlxColor.RED);
++			return 0;
++		});
+ 		Lua_helper.add_callback(lua, "getTextWidth", function(tag:String) {
+ 			var obj:FlxText = LuaUtils.getTextObject(tag);
+ 			if(obj != null)
+diff -ruN a/source/states/CustomState.hx b/source/states/CustomState.hx
+--- a/source/states/CustomState.hx	1970-01-01 01:00:00.000000000 +0100
++++ b/source/states/CustomState.hx	2026-11-01 00:41:42.471182835 +0000
+@@ -0,0 +1,193 @@
++package states;
++
++import tea.SScript;
++import backend.Highscore;
++import backend.Discord.DiscordClient;
++import flixel.addons.transition.FlxTransitionableState;
++import psychlua.HScript.CustomFlxColor;
++
++/**
++ * Host for the menu / screen scripts in mods/<mod>/states/*.hx.
++ *
++ * The script is a plain SScript with this state as its "special object", so
++ * unqualified names in the script (add, controls, persistentUpdate ...) resolve
++ * against the state. `game` is also exposed as an alias for the state.
++ * Callbacks looked up on the script: onCreate, onCreatePost, onUpdate, onUpdatePost,
++ * onStepHit, onBeatHit, onSectionHit, onDestroy.
++ */
++class CustomState extends MusicBeatState
++{
++	/** shared flag the scripts use to remember which menu page (data / main) to open */
++	public static var dataSelect:Bool = false;
++
++	/** script opened when the game boots (resolved through Paths.hscript) */
++	public static var initialScript:String = 'states/TitleState';
++
++	static var bootstrapped:Bool = false;
++
++	public var script:SScript;
++	public var scriptPath:String;
++	public var game:CustomState;
++
++	public function new(?scriptPath:String)
++	{
++		super();
++		this.scriptPath = scriptPath;
++	}
++
++	override function create()
++	{
++		if (!bootstrapped)
++		{
++			// what the stock TitleState does on boot, because the script screens do not
++			bootstrapped = true;
++			FlxG.save.bind('funkin', CoolUtil.getSavePath());
++			Mods.pushGlobalMods();
++			Mods.loadTopMod();
++			backend.ClientPrefs.loadPrefs();
++			Highscore.load();
++			FlxTransitionableState.skipNextTransOut = true; // no fade-in on boot (it would be wiped by the script's memory clear)
++		}
++
++		if (scriptPath == null)
++		{
++			// VSR_SCRIPT=states/MainMenuState starts on that screen (testing aid)
++			var forced:String = backend.VsrDebug.env('VSR_SCRIPT');
++			scriptPath = Paths.hscript((forced != null && forced != '') ? forced : initialScript);
++		}
++
++		persistentUpdate = persistentDraw = true;
++		game = this;
++		super.create();
++
++		loadScript();
++		callScript('onCreate');
++		callScript('onCreatePost');
++
++		if (backend.VsrDebug.env('VSR_LAYERED') != null) new FlxTimer().start(3, function(_) { FlxG.camera.bgColor = 0xFF131313; for (o in FlxG.state.members) if (o != null) o.visible = false; backend.WindowTransparency.setLayered(true); }); // testing aid only
++		if (backend.VsrDebug.env('VSR_CONTROLS') != null) new FlxTimer().start(2, function(_) MusicBeatState.switchState(new options.ControlsSubState())); // testing aid only
++		// testing aid: VSR_SONG="Trinity" jumps straight into that song, like the main menu does
++		var song:String = backend.VsrDebug.env('VSR_SONG');
++		if (song != null && song != '')
++		{
++			new FlxTimer().start(1, function(_)
++			{
++				if (FlxG.sound.music == null) FlxG.sound.playMusic(Paths.music('freakyMenu'), 0);
++				if (backend.VsrDebug.env('VSR_BOT') != null) ClientPrefs.data.gameplaySettings.set('botplay', true); // testing aid only
++				if (backend.VsrDebug.env('VSR_RATE') != null) ClientPrefs.data.gameplaySettings.set('songspeed', Std.parseFloat(backend.VsrDebug.env('VSR_RATE'))); // testing aid: play faster
++				// testing aid: VSR_FF="3,3490" plays at 3x with botplay until step 3490, then hands over at normal speed
++				if (backend.VsrDebug.env('VSR_FF') != null) { var ff = backend.VsrDebug.env('VSR_FF').split(','); ClientPrefs.data.gameplaySettings.set('botplay', true); ClientPrefs.data.gameplaySettings.set('songspeed', Std.parseFloat(ff[0])); }
++				PlayState.SONG = backend.Song.loadFromJson(song, song);
++				PlayState.isStoryMode = false;
++				PlayState.storyDifficulty = 0;
++				PlayState.songVariation = null;
++				PlayState.checkpointTime = 0;
++				FlxG.resizeWindow(1280, 720);
++				FlxG.resizeGame(1280, 720);
++				states.LoadingState.loadAndSwitchState(new PlayState());
++			});
++		}
++	}
++
++	function loadScript()
++	{
++		if (!sys.FileSystem.exists(scriptPath))
++		{
++			trace('CustomState: script not found: $scriptPath');
++			return;
++		}
++
++		script = new SScript('', false, false);
++		script.traces = true;
++		script.debugTraces = true;
++		script.preset();
++
++		script.set('game', this);
++		// scripts assign these, and the special object only resolves reads
++		script.set('persistentUpdate', true);
++		script.set('persistentDraw', true);
++		script.set('FlxG', FlxG);
++		script.set('FlxSprite', FlxSprite);
++		script.set('FlxText', flixel.text.FlxText);
++		script.set('FlxTween', flixel.tweens.FlxTween);
++		script.set('FlxEase', flixel.tweens.FlxEase);
++		script.set('FlxTimer', flixel.util.FlxTimer);
++		script.set('FlxMath', flixel.math.FlxMath);
++		script.set('FlxCamera', flixel.FlxCamera);
++		script.set('FlxColor', CustomFlxColor);
++		script.set('FlxSound', flixel.sound.FlxSound);
++		script.set('FlxBackdrop', flixel.addons.display.FlxBackdrop);
++		script.set('FlxTransitionableState', FlxTransitionableState);
++		script.set('Paths', Paths);
++		script.set('Conductor', Conductor);
++		script.set('ClientPrefs', backend.ClientPrefs);
++		script.set('CoolUtil', CoolUtil);
++		script.set('Mods', Mods);
++		script.set('Highscore', Highscore);
++		script.set('Song', backend.Song);
++		script.set('Alphabet', Alphabet);
++		script.set('Controls', backend.Controls);
++		script.set('MusicBeatState', MusicBeatState);
++		script.set('CustomState', CustomState);
++		script.set('PlayState', PlayState);
++		script.set('DiscordClient', DiscordClient);
++		script.set('Main', Main);
++		script.set('Lib', openfl.Lib);
++
++		script.set('MaigoSpeaker', objects.MaigoSpeaker);
++		#if VIDEOS_ALLOWED
++		script.set('FlxVideoSprite', hxvlc.flixel.FlxVideoSprite);
++		#end
++		script.setSpecialObject(this);
++		// same line as the script's first line, so error line numbers stay correct
++		script.doString('import flixel.text.FlxTextBorderStyle; ' + sys.io.File.getContent(scriptPath), scriptPath);
++
++		if (script.parsingException != null)
++			trace('CustomState: error in $scriptPath: ' + script.parsingException.message);
++	}
++
++	public function callScript(func:String, ?args:Array<Dynamic>):Dynamic
++	{
++		if (script == null || !script.exists(func)) return null;
++		var res = script.call(func, args == null ? [] : args);
++		if (res.exceptions != null && res.exceptions.length > 0)
++			for (e in res.exceptions) trace('CustomState: $func in $scriptPath: ' + e.message);
++		return res.returnValue;
++	}
++
++	override function update(elapsed:Float)
++	{
++		callScript('onUpdate', [elapsed]);
++		super.update(elapsed);
++		callScript('onUpdatePost', [elapsed]);
++	}
++
++	override function stepHit()
++	{
++		super.stepHit();
++		callScript('onStepHit');
++	}
++
++	override function beatHit()
++	{
++		super.beatHit();
++		callScript('onBeatHit');
++	}
++
++	override function sectionHit()
++	{
++		super.sectionHit();
++		callScript('onSectionHit');
++	}
++
++	override function destroy()
++	{
++		callScript('onDestroy');
++		if (script != null)
++		{
++			script.destroy();
++			script = null;
++		}
++		super.destroy();
++	}
++}
+diff -ruN a/source/states/PlayState.hx b/source/states/PlayState.hx
+--- a/source/states/PlayState.hx	2026-11-01 00:45:22.515187975 +0000
++++ b/source/states/PlayState.hx	2026-11-01 00:41:42.476210801 +0000
+@@ -38,10 +38,7 @@
+ #end
+ 
+ #if VIDEOS_ALLOWED
+-#if (hxCodec >= "3.0.0") import hxcodec.flixel.FlxVideo as VideoHandler;
+-#elseif (hxCodec >= "2.6.1") import hxcodec.VideoHandler as VideoHandler;
+-#elseif (hxCodec == "2.6.0") import VideoHandler;
+-#else import vlc.MP4Handler as VideoHandler; #end
++import hxvlc.flixel.FlxVideo as VideoHandler;
+ #end
+ 
+ import objects.Note.EventNote;
+@@ -77,6 +74,10 @@
+ **/
+ class PlayState extends MusicBeatState
+ {
++	/** scale mode that keeps the game at the stage size (native resolution, no letterboxing) */
++	public static function getStageSizeScaleMode():flixel.system.scaleModes.BaseScaleMode
++		return new flixel.system.scaleModes.StageSizeScaleMode();
++
+ 	public static var STRUM_X = 42;
+ 	public static var STRUM_X_MIDDLESCROLL = -278;
+ 
+@@ -206,6 +207,13 @@
+ 	public var iconP2:HealthIcon;
+ 	public var camHUD:FlxCamera;
+ 	public var camGame:FlxCamera;
++	/** background-effect layer (below camGame); scripts mirror camGame onto it and put shaders on it */
++	public var camFX:FlxCamera;
++	/** layer for video sprites */
++	public var camVideo:FlxCamera;
++	public var focusLostFramerate(get, set):Int;
++	function get_focusLostFramerate():Int return FlxG.game.focusLostFramerate;
++	function set_focusLostFramerate(v:Int):Int return FlxG.game.focusLostFramerate = v;
+ 	public var camOther:FlxCamera;
+ 	public var cameraSpeed:Float = 1;
+ 
+@@ -218,6 +226,22 @@
+ 
+ 	public static var campaignScore:Int = 0;
+ 	public static var campaignMisses:Int = 0;
++
++	/** song position (ms) of the last checkpoint; events/lua before it are skipped on restart */
++	public static var checkpointTime(default, set):Float = 0;
++	static function set_checkpointTime(v:Float):Float
++	{
++		checkpointTime = v;
++		if(instance != null) instance.setOnLuas('checkpointTime', v);
++		return v;
++	}
++
++	/** null = normal, "remixed" = remixed legacy version (set by the menu scripts) */
++	public static var songVariation:String = null;
++
++	/** default flixel letterboxing scale mode (the counterpart of getStageSizeScaleMode) */
++	public static function getRatioScaleMode():flixel.system.scaleModes.BaseScaleMode
++		return new flixel.system.scaleModes.RatioScaleMode();
+ 	public static var seenCutscene:Bool = false;
+ 	public static var deathCounter:Int = 0;
+ 
+@@ -259,6 +283,8 @@
+ 	// Less laggy controls
+ 	private var keysArray:Array<String>;
+ 	public var songName:String;
++	/** title shown in Discord presence, set by the mod's song scripts via setProperty('displayName', ...) */
++	public var displayName:String = null;
+ 
+ 	// Callbacks for stages
+ 	public var startCallback:Void->Void = null;
+@@ -269,6 +295,25 @@
+ 		//trace('Playback Rate: ' + playbackRate);
+ 		Paths.clearStoredMemory();
+ 
++		// The main menu puts the window in the 1280x720 song layout (stage-size scale mode) before a song starts.
++		// A restart or retry skips the menu, and the mod's game over left the window at 820x720, so redo that step here.
++		{
++			var win = lime.app.Application.current.window;
++			if (win != null && (win.width != 1280 || win.height != 720 || !Std.isOfType(FlxG.scaleMode, flixel.system.scaleModes.StageSizeScaleMode)))
++			{
++				FlxG.scaleMode = new flixel.system.scaleModes.StageSizeScaleMode();
++				FlxG.resizeGame(1280, 720);
++				FlxG.resizeWindow(1280, 720);
++				var dm = win.display != null ? win.display.currentMode : null;
++				if (dm != null)
++				{
++					win.x = Std.int((Math.ceil(dm.width * win.scale) - win.width) / 2);
++					win.y = Std.int((Math.ceil(dm.height * win.scale) - win.height) / 2);
++				}
++				Sys.println('[window] song start: window set to 1280x720');
++			}
++		}
++
+ 		startCallback = startCountdown;
+ 		endCallback = endSong;
+ 
+@@ -303,6 +348,19 @@
+ 		camHUD.bgColor.alpha = 0;
+ 		camOther.bgColor.alpha = 0;
+ 
++		// fork cameras: camFX sits under camGame (so camGame must be see-through), camVideo above it
++		camFX = new FlxCamera();
++		camVideo = new FlxCamera();
++		camVideo.bgColor.alpha = 0;
++		camFX.bgColor.alpha = 0;
++		camGame.bgColor.alpha = 0;
++		// camFX has to be on the display list too, directly below camGame
++		FlxG.cameras.add(camFX, false);
++		FlxG.cameras.list.remove(camFX);
++		FlxG.cameras.list.insert(0, camFX);
++		FlxG.game.setChildIndex(camFX.flashSprite, FlxG.game.getChildIndex(camGame.flashSprite));
++		FlxG.cameras.add(camVideo, false);
++
+ 		FlxG.cameras.add(camHUD, false);
+ 		FlxG.cameras.add(camOther, false);
+ 		grpNoteSplashes = new FlxTypedGroup<NoteSplash>();
+@@ -685,6 +743,7 @@
+ 
+ 	#if (LUA_ALLOWED || HSCRIPT_ALLOWED)
+ 	public function addTextToDebug(text:String, color:FlxColor) {
++		Sys.println('[dbg] ' + text);
+ 		var newText:psychlua.DebugLuaText = luaDebugGroup.recycle(psychlua.DebugLuaText);
+ 		newText.text = text;
+ 		newText.color = color;
+@@ -845,24 +904,15 @@
+ 		}
+ 
+ 		var video:VideoHandler = new VideoHandler();
+-			#if (hxCodec >= "3.0.0")
+-			// Recent versions
+-			video.play(filepath);
+-			video.onEndReached.add(function()
+-			{
+-				video.dispose();
+-				startAndEnd();
+-				return;
+-			}, true);
+-			#else
+-			// Older versions
+-			video.playVideo(filepath);
+-			video.finishCallback = function()
+-			{
+-				startAndEnd();
+-				return;
+-			}
+-			#end
++		FlxG.addChildBelowMouse(video);
++		video.onEndReached.add(function()
++		{
++			FlxG.removeChild(video);
++			video.dispose();
++			startAndEnd();
++		}, true);
++		if(video.load(filepath)) video.play();
++		else { FlxG.removeChild(video); startAndEnd(); }
+ 		#else
+ 		FlxG.log.warn('Platform not supported!');
+ 		startAndEnd();
+@@ -1219,6 +1269,8 @@
+ 		vocals.play();
+ 		opponentVocals.play();
+ 
++		// testing aid: VSR_SEEK=<ms> starts the song at that time, events before it count as already done
++		if(backend.VsrDebug.env('VSR_SEEK') != null && startOnTime <= 0) { startOnTime = Std.parseFloat(backend.VsrDebug.env('VSR_SEEK')) + 500; checkpointTime = startOnTime - 500; }
+ 		if(startOnTime > 0) setSongTime(startOnTime - 500);
+ 		startOnTime = 0;
+ 
+@@ -1236,7 +1288,7 @@
+ 
+ 		#if DISCORD_ALLOWED
+ 		// Updating Discord Rich Presence (with Time Left)
+-		if(autoUpdateRPC) DiscordClient.changePresence(detailsText, SONG.song + " (" + storyDifficultyText + ")", iconP2.getCharacter(), true, songLength);
++		if(autoUpdateRPC) DiscordClient.changePresence(detailsText, (displayName != null ? displayName : SONG.song) + " (" + storyDifficultyText + ")", iconP2.getCharacter(), true, songLength);
+ 		#end
+ 		setOnScripts('songLength', songLength);
+ 		callOnScripts('onSongStart');
+@@ -1572,7 +1624,7 @@
+ 	override public function onFocusLost():Void
+ 	{
+ 		#if DISCORD_ALLOWED
+-		if (health > 0 && !paused && autoUpdateRPC) DiscordClient.changePresence(detailsPausedText, SONG.song + " (" + storyDifficultyText + ")", iconP2.getCharacter());
++		if (health > 0 && !paused && autoUpdateRPC) DiscordClient.changePresence(detailsPausedText, (displayName != null ? displayName : SONG.song) + " (" + storyDifficultyText + ")", iconP2.getCharacter());
+ 		#end
+ 
+ 		super.onFocusLost();
+@@ -1586,9 +1638,9 @@
+ 		if(!autoUpdateRPC) return;
+ 
+ 		if (showTime)
+-			DiscordClient.changePresence(detailsText, SONG.song + " (" + storyDifficultyText + ")", iconP2.getCharacter(), true, songLength - Conductor.songPosition - ClientPrefs.data.noteOffset);
++			DiscordClient.changePresence(detailsText, (displayName != null ? displayName : SONG.song) + " (" + storyDifficultyText + ")", iconP2.getCharacter(), true, songLength - Conductor.songPosition - ClientPrefs.data.noteOffset);
+ 		else
+-			DiscordClient.changePresence(detailsText, SONG.song + " (" + storyDifficultyText + ")", iconP2.getCharacter());
++			DiscordClient.changePresence(detailsText, (displayName != null ? displayName : SONG.song) + " (" + storyDifficultyText + ")", iconP2.getCharacter());
+ 		#end
+ 	}
+ 
+@@ -1872,7 +1924,7 @@
+ 		openSubState(new PauseSubState());
+ 
+ 		#if DISCORD_ALLOWED
+-		if(autoUpdateRPC) DiscordClient.changePresence(detailsPausedText, SONG.song + " (" + storyDifficultyText + ")", iconP2.getCharacter());
++		if(autoUpdateRPC) DiscordClient.changePresence(detailsPausedText, (displayName != null ? displayName : SONG.song) + " (" + storyDifficultyText + ")", iconP2.getCharacter());
+ 		#end
+ 	}
+ 
+@@ -1935,7 +1987,7 @@
+ 
+ 				#if DISCORD_ALLOWED
+ 				// Game Over doesn't get his its variable because it's only used here
+-				if(autoUpdateRPC) DiscordClient.changePresence("Game Over - " + detailsText, SONG.song + " (" + storyDifficultyText + ")", iconP2.getCharacter());
++				if(autoUpdateRPC) DiscordClient.changePresence("Game Over - " + detailsText, (displayName != null ? displayName : SONG.song) + " (" + storyDifficultyText + ")", iconP2.getCharacter());
+ 				#end
+ 				isDead = true;
+ 				return true;
+@@ -1971,6 +2023,7 @@
+ 		if(Math.isNaN(flValue2)) flValue2 = null;
+ 
+ 		switch(eventName) {
++			case 'Hide Taskbar' | 'Restore Taskbar': // the bar is hidden by step during Trinity's fullscreen part instead (see stepHit)
+ 			case 'Hey!':
+ 				var value:Int = 2;
+ 				switch(value1.toLowerCase().trim()) {
+@@ -2350,7 +2403,8 @@
+ 					FlxG.sound.playMusic(Paths.music('freakyMenu'));
+ 					#if DISCORD_ALLOWED DiscordClient.resetClientID(); #end
+ 
+-					MusicBeatState.switchState(new StoryMenuState());
++					FlxTransitionableState.skipNextTransIn = true; // the results script already faded to black
++				CustomState.dataSelect = true; MusicBeatState.switchState(new CustomState(), Paths.hscript('states/MainMenuState'));
+ 
+ 					// if ()
+ 					if(!ClientPrefs.getGameplaySetting('practice') && !ClientPrefs.getGameplaySetting('botplay')) {
+@@ -2385,7 +2439,8 @@
+ 				Mods.loadTopMod();
+ 				#if DISCORD_ALLOWED DiscordClient.resetClientID(); #end
+ 
+-				MusicBeatState.switchState(new FreeplayState());
++				FlxTransitionableState.skipNextTransIn = true; // the results script already faded to black
++				CustomState.dataSelect = true; MusicBeatState.switchState(new CustomState(), Paths.hscript('states/MainMenuState'));
+ 				FlxG.sound.playMusic(Paths.music('freakyMenu'));
+ 				changedDifficulty = false;
+ 			}
+@@ -3015,6 +3070,9 @@
+ 	}
+ 
+ 	override function destroy() {
++		backend.WindowTransparency.watchBar(false);
++		backend.WindowTransparency.opacity = 1; // never leave the window faded out when leaving a song
++		backend.TaskbarHider.restore(); // never leave the bar hidden when leaving a song
+ 		#if LUA_ALLOWED
+ 		for (lua in luaArray)
+ 		{
+@@ -3047,9 +3105,63 @@
+ 		super.destroy();
+ 	}
+ 
++	var vsrIntDone:Bool = false;
+ 	var lastStepHit:Int = -1;
++	var vsrFFDone:Bool = false;
++	var vsrFFChecked:Bool = false;
++	var vsrFFEnv:String = null;
+ 	override function stepHit()
+ 	{
++		// testing aid: VSR_FF="rate,step": fast-forward with botplay until that step, then give control back at normal speed
++		#if (linux && vsr_debug)
++		if (!vsrFFChecked) { vsrFFChecked = true; vsrFFEnv = backend.VsrDebug.env('VSR_FF'); } // read once, not every step
++		var vsrFF:String = vsrFFEnv;
++		if (vsrFF != null && !vsrFFDone)
++		{
++			var ffStep:Int = Std.parseInt(vsrFF.split(',')[1]);
++			if (curStep >= ffStep)
++			{
++				vsrFFDone = true;
++				cpuControlled = false;
++				if (botplayTxt != null) botplayTxt.visible = false;
++				playbackRate = 1;
++				ClientPrefs.data.gameplaySettings.set('botplay', false);
++				ClientPrefs.data.gameplaySettings.set('songspeed', 1);
++				Sys.println('[ff] handed over at step ' + curStep);
++			}
++		}
++		#end
++		// testing aid: VSR_INTERNAL=1 forces the "internal X" layers on at step 8 so they can be inspected
++		#if (linux && vsr_debug)
++		if (backend.VsrDebug.env('VSR_INTERNAL') != null && curStep >= 8 && !vsrIntDone)
++		{
++			vsrIntDone = true;
++			for (n in ['internalColour', 'internalBG', 'internalOverlay', 'internalGradient'])
++			{
++				var s = modchartSprites.get(n);
++				if (s == null) { Sys.println('[int] missing ' + n); continue; }
++				s.alpha = (n == 'internalOverlay') ? 0.7 : 1;
++				if (s.animation != null && s.animation.exists('0')) s.animation.play('0', true);
++				Sys.println('[int] ' + n + ' x=' + s.x + ' y=' + s.y + ' w=' + s.width + ' h=' + s.height + ' fw=' + s.frameWidth + ' sx=' + s.scale.x + ' blend=' + s.blend + ' cam=' + (s.cameras != null && s.cameras.length > 0 ? Std.string(s.cameras[0].width) + 'x' + s.cameras[0].height + ' zoom=' + s.cameras[0].zoom + ' idx=' + FlxG.cameras.list.indexOf(s.cameras[0]) : 'none') + ' shader=' + (s.shader != null));
++			}
++			camGame.alpha = 0; camHUD.alpha = 0; camVideo.alpha = 0; camOther.alpha = 0;
++		}
++		#end
++
++		// testing aid: VSR_SHOTSTEPS="2560,2640" saves a screenshot of the screen at exactly those steps
++		#if (linux && vsr_debug)
++		var shotSteps:String = backend.VsrDebug.env('VSR_SHOTSTEPS');
++		if (shotSteps != null && (',' + shotSteps + ',').indexOf(',' + curStep + ',') != -1)
++			try { new sys.io.Process('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'x11grab', '-video_size', '1920x1080', '-i', Sys.getEnv('DISPLAY'), '-frames:v', '1', Sys.getEnv('HOME') + '/psych/shots/step' + curStep + '.png']); } catch (e:Dynamic) {}
++		#end
++
++		// Trinity: hide the desktop bar for the fullscreen part (window grows at step 3596) and bring it back
++		// just before the see-through desktop starts (step 3840), so it is visible when the desktop is.
++		if (Paths.formatToSongPath(SONG.song) == 'trinity')
++		{
++			if (curStep == 3596) { backend.TaskbarHider.hide(); backend.WindowTransparency.watchBar(true); } // the watcher then shows/hides the bar as the desktop appears and disappears
++		}
++
+ 		if (SONG.needsVoices && FlxG.sound.music.time >= -ClientPrefs.data.noteOffset)
+ 		{
+ 			var timeSub:Float = Conductor.songPosition - Conductor.offset;
+diff -ruN a/source/substates/GameOverSubstate.hx b/source/substates/GameOverSubstate.hx
+--- a/source/substates/GameOverSubstate.hx	2026-11-01 00:45:22.521265992 +0000
++++ b/source/substates/GameOverSubstate.hx	2026-10-30 00:31:03.000000000 +0000
+@@ -92,10 +92,7 @@
+ 			PlayState.chartingMode = false;
+ 
+ 			Mods.loadTopMod();
+-			if (PlayState.isStoryMode)
+-				MusicBeatState.switchState(new StoryMenuState());
+-			else
+-				MusicBeatState.switchState(new FreeplayState());
++			states.CustomState.dataSelect = true; MusicBeatState.switchState(new states.CustomState(), Paths.hscript('states/MainMenuState'));
+ 
+ 			FlxG.sound.playMusic(Paths.music('freakyMenu'));
+ 			PlayState.instance.callOnScripts('onGameOverConfirm', [false]);
+diff -ruN a/source/substates/PauseSubState.hx b/source/substates/PauseSubState.hx
+--- a/source/substates/PauseSubState.hx	2026-11-01 00:45:22.521789462 +0000
++++ b/source/substates/PauseSubState.hx	2026-10-30 00:31:03.000000000 +0000
+@@ -311,10 +311,7 @@
+ 					PlayState.seenCutscene = false;
+ 
+ 					Mods.loadTopMod();
+-					if(PlayState.isStoryMode)
+-						MusicBeatState.switchState(new StoryMenuState());
+-					else 
+-						MusicBeatState.switchState(new FreeplayState());
++					states.CustomState.dataSelect = true; MusicBeatState.switchState(new states.CustomState(), Paths.hscript('states/MainMenuState'));
+ 
+ 					FlxG.sound.playMusic(Paths.music('freakyMenu'));
+ 					PlayState.changedDifficulty = false;
