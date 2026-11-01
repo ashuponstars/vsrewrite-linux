@@ -31,6 +31,10 @@ tested on fedora + hyprland only so far.
 
 small separate download, drop it over the game folder. test hooks and a memory/fps logger ([docs/DEBUG.md](docs/DEBUG.md)). `./test-trinity.sh` jumps to just before trinity's widescreen part.
 
+## bugs and fixes
+
+found a bug? open an issue with the bug report template and attach `vsrewrite-log.txt`. fixed something? you don't need to fork, paste your diff in an issue with the fix / patch template and i'll apply it and credit you. details in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## source
 
 [BUILDING.md](BUILDING.md) to build, [docs/CHANGES.md](docs/CHANGES.md) for changes vs upstream psych. the repo alone isn't runnable.
