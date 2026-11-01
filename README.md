@@ -23,7 +23,7 @@ tested on fedora + hyprland only so far.
 
 - no window rules needed, the window tags itself so tiling wms float it. `VSR_NO_DIALOG=1 ./run.sh` turns that off
 - the game hides your bar while the desktop is covered. use your own `hide-bar.sh` / `restore-bar.sh` next to `run.sh` (examples in `examples/`), or `bar-auto.sh` tries quickshell, waybar, polybar, plasma panels, or closes and relaunches any other bar. only my quickshell is tested
-- trinity uses ~1.5 gb ram on integrated graphics
+- i've tried my best to make this run well on low end hardware. you'll mostly hit 1-2gb of ram in trinity, other than that you should be good
 - `oh no its returning null` in the log is harmless
 - native wayland isn't supported, windows can't position themselves
 
