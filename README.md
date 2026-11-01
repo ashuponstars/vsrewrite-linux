@@ -41,6 +41,6 @@ found a bug? open an issue with the bug report template and attach `vsrewrite-lo
 
 ## credits
 
-the mod is by springless, jaspercat, snowthefox, dapootisbird and the voice actors (see the mod's credits screen). included with their permission plus one small crash guard ([NOTICE.md](NOTICE.md)). please support them.
+the mod is by springless, jaspercat, snowthefox, dapootisbird and the voice actors (see the mod's credits screen). included with their permission plus two small fixes ([NOTICE.md](NOTICE.md)). please support them.
 
 engine: [psych engine](https://github.com/ShadowMario/FNF-PsychEngine) 0.7.3 by shadowmario and team. apache 2.0, see `LICENSE`.

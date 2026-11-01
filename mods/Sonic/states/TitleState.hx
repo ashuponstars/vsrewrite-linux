@@ -216,7 +216,7 @@ function startIntro()
         canSkipIntro = true;
     });
 
-    introSound.play(true);
+    if (introSound != null) introSound.destroy(); introSound = FlxG.sound.play(Paths.sound("title"), 1, false, null, false);
     introSound.volume = 1;
     new FlxTimer().start(1.05, function(tmr) {
         introAnim.animation.play("intro");
