@@ -2,9 +2,9 @@
 
 a linux port of **vs rewrite**: the mod plus the psych engine 0.7.3 fork it runs on, reworked so the mod's window tricks (resizing, moving the window, the see-through desktop part) work on linux.
 
-**status: v1 experimental.** works great on my setup, new everywhere else. please report problems.
+**v1 experimental.** it runs well on my pc but it's new, so if something breaks on yours, open an issue.
 
-the mod isn't mine. it's by springless, jaspercat, snowthefox, dapootisbird and the voice actors (full list in the mod's credits screen and [NOTICE.md](NOTICE.md)). it's in `mods/Sonic` with the team's permission, plus one tiny crash guard (see NOTICE.md). go support them.
+the mod isn't mine, it's made by springless, jaspercat, snowthefox, dapootisbird and the voice actors (full list in the mod's credits screen and [NOTICE.md](NOTICE.md)). it's in `mods/Sonic` with the team's permission, plus one tiny crash guard (see NOTICE.md). please support them.
 
 ## install
 
@@ -20,26 +20,26 @@ a log goes to `vsrewrite-log.txt`, attach it to bug reports. cloning the repo gi
 - glibc 2.34+ (ubuntu 22.04+, debian 12+, fedora 35+, rhel 9, arch)
 - a compositor for the see-through desktop part (all wayland sessions have one, on x11 run kwin/picom/mutter). without one that part is black
 
-tested on **fedora + hyprland** only so far. kde, gnome, sway, i3 and other distros should work but haven't been run yet.
+tested on **fedora + hyprland** only so far. kde, gnome, sway, i3 and other distros should work but i haven't run them yet.
 
 ## what works
 
-window sizing and shaking, the see-through desktop section (wallpaper shows through, fake error window fades like on windows), end credits fullscreen and back, restarts/game over keeping the right size, and lower ram (image copies freed after upload, memory returned after songs).
+window sizing and shaking, the see-through desktop section (wallpaper shows through, fake error window fades like on windows), end credits fullscreen and back, restarts/game over keeping the right size, and lower ram use.
 
 **floating:** no window rules needed, the launcher tags the window as a dialog so tiling wms float it. `VSR_NO_DIALOG=1 ./run.sh` turns that off.
 
-**desktop bar:** while the desktop is covered the game hides your bar and brings it back when it's visible. it runs your own `hide-bar.sh` / `restore-bar.sh` next to `run.sh` if you make them (examples in `examples/`, mine is `qs -c ii ipc call bar close|open`). otherwise `bar-auto.sh` detects quickshell, waybar, polybar, plasma panels, or any other bar (stops and restarts it). only waybar and quickshell are reasoned through, none are tested on a real desktop yet. hyprland users can also set `coverBar` to fullscreen over the bar.
+**desktop bar:** while the desktop is covered the game hides your bar and brings it back when it's visible. it runs your own `hide-bar.sh` / `restore-bar.sh` next to `run.sh` if you make them (examples in `examples/`, mine is `qs -c ii ipc call bar close|open`). otherwise `bar-auto.sh` detects quickshell, waybar, polybar, plasma panels, or any other bar (closes it and relaunches it after). i've only tested my own quickshell setup, the rest are untested. hyprland users can also set `coverBar` to fullscreen over the bar.
 
 ## debug build
 
-separate small download (`vsrewrite-linux-debug-*.tar.xz`), drop it over a release install. adds test hooks and a memory/fps logger, see [docs/DEBUG.md](docs/DEBUG.md). `./test-trinity.sh` jumps to just before trinity's widescreen part. same optimised build, "debug" means the hooks.
+separate small download (`vsrewrite-linux-debug-*.tar.xz`), drop it over a release install. adds test hooks and a memory/fps logger, see [docs/DEBUG.md](docs/DEBUG.md). `./test-trinity.sh` jumps to just before trinity's widescreen part. it's the same fast build, "debug" just means the extra hooks.
 
 ## known stuff
 
-- trinity uses about 1.5 gb ram on integrated graphics, the mod's sheets are huge and already tightly packed
+- trinity uses about 1.5 gb ram on integrated graphics, the mod's sprite sheets are huge
 - `oh no its returning null` in the log is harmless (images the mod asks for that don't exist)
 - a single frame can fail to draw once per screen change, recovers next frame, invisible
-- native wayland isn't supported (windows can't place themselves there)
+- native wayland isn't supported (windows can't position themselves there)
 
 ## more
 
